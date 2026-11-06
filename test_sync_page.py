@@ -8,6 +8,7 @@ import threading
 import time
 import unittest
 from unittest.mock import patch,Mock
+import httpx
 
 from sync_page import Jobs,handler_for
 from sync_dry_run import private_json
@@ -63,6 +64,25 @@ class PageTests(unittest.TestCase):
             data=(Path(d)/'crosspoint-auth.json').read_text()
             self.assertNotIn('private-password',data)
             self.assertEqual((Path(d)/'crosspoint-auth.json').stat().st_mode&0o777,0o600)
+
+    def test_transient_dns_failure_is_retried_before_saving_connection(self):
+        with tempfile.TemporaryDirectory() as d:
+            jobs=Jobs(d)
+            response=Mock(status_code=200);response.json.return_value={'authorized':'OK'}
+            with patch('sync_page.httpx.get',side_effect=[httpx.ConnectError('DNS busy'),response]) as get, \
+                    patch('sync_page.time.sleep'):
+                jobs.connect('user','private-password',True)
+            self.assertEqual(get.call_count,2)
+            self.assertTrue((Path(d)/'crosspoint-auth.json').exists())
+
+    def test_rejected_credentials_are_not_retried_or_saved(self):
+        with tempfile.TemporaryDirectory() as d:
+            response=Mock(status_code=401)
+            with patch('sync_page.httpx.get',return_value=response) as get:
+                with self.assertRaisesRegex(ValueError,'did not accept'):
+                    Jobs(d).connect('user','wrong',True)
+            self.assertEqual(get.call_count,1)
+            self.assertFalse((Path(d)/'crosspoint-auth.json').exists())
 
 
 if __name__=='__main__':unittest.main()

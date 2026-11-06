@@ -18,6 +18,15 @@ DEVICE_ID='book-sync-manual'
 
 
 class ManualSources(ReadOnlySources):
+    def _get(self,service,url,**kwargs):
+        # Retry only reads after transient connection/DNS failures. PUT/POST
+        # remain single attempts and ambiguous write outcomes are surfaced.
+        for attempt in range(3):
+            try:return super()._get(service,url,**kwargs)
+            except ReadFailure as error:
+                if not str(error).endswith('connection failed') or attempt==2:raise
+                time.sleep(0.25)
+
     def details(self):
         kindle=self._get('Kindle',KINDLE_URL,auth=self.auth,
                          params={'type':'PDOC','key':self.kindle_document})

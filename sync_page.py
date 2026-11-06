@@ -11,6 +11,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 from urllib.parse import urlsplit
 
 import httpx
@@ -52,11 +53,17 @@ class Jobs:
         if not username or not password:
             raise ValueError('Enter the sync username and password used on your X4.')
         key=hashlib.md5(password.encode()).hexdigest()
-        try:
-            r=httpx.get(SERVER+'/users/auth',headers={'x-auth-user':username,'x-auth-key':key},
-                        timeout=20,follow_redirects=False)
-        except httpx.HTTPError:
-            raise ValueError('Could not reach CrossPoint. Try again.') from None
+        for attempt in range(3):
+            try:
+                r=httpx.get(SERVER+'/users/auth',headers={'x-auth-user':username,'x-auth-key':key},
+                            timeout=12,follow_redirects=False)
+                break
+            except (httpx.ConnectError,httpx.ConnectTimeout):
+                if attempt==2:
+                    raise ValueError('Could not reach CrossPoint after retrying. Check the Pi’s connection and try again.') from None
+                time.sleep(0.25)
+            except httpx.HTTPError:
+                raise ValueError('CrossPoint did not finish responding. Try again.') from None
         if r.status_code!=200 or r.json().get('authorized')!='OK':
             raise ValueError('CrossPoint did not accept that login.')
         private_json(self.root/'crosspoint-auth.json',{'username':username,'auth_key':key,
