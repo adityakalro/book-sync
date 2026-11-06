@@ -1,0 +1,36 @@
+.venv/
+.private/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite-*
+*.db
+*.log
+*.jsonl
+*.epub
+!/Book Sync Progress Test.epub
+*.azw
+*.azw3
+*.azw8
+*.kfx
+*.mobi
+*.pdf
+*.zip
+*.tar
+*.tar.gz
+*.whl
+wheelhouse/
+outputs/
+# Personal deployment notes and account-specific experimental helpers.
+/DEPLOYMENT.md
+/pdoc_probe.py
+/crosspoint_probe.py
+/crosspoint_handoff.py
+/test_crosspoint_handoff.py

@@ -1,0 +1,83 @@
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+from xml.etree.ElementTree import fromstring
+
+import httpx
+from manual_sync import apply_handoff
+from sync_dry_run import Snapshot, ReadFailure
+from test_sync_dry_run import LocationMap,P1,P2
+
+
+class Map(LocationMap):locations=[{}]*3
+
+
+class Sources:
+    def __init__(self,snapshots,respond):
+        self.snapshots=iter(snapshots);self.auth=None;self.headers={'x-auth-key':'test-hash'}
+        self.client=httpx.Client(transport=httpx.MockTransport(respond))
+    def details(self):
+        value=next(self.snapshots)
+        if isinstance(value,Exception):raise value
+        return value,{'payload':{'guid':'test-guid'}},{'progress':value.crosspoint_xpointer}
+
+
+class HandoffTests(unittest.TestCase):
+    def run_case(self,snapshots,respond=lambda r:httpx.Response(200)):
+        profile={'document':'KINDLEBOOK','crosspoint_document':'cp-book',
+                 'files':{'epub':{'path':'/test/book.epub'}}}
+        with tempfile.TemporaryDirectory() as d:
+            sources=Sources(snapshots,respond)
+            try:
+                with patch('manual_sync.epub_position_details',return_value={'percentage':0.5}):
+                    return apply_handoff(profile,Map(),'profile',sources,Path(d))
+            finally:sources.client.close()
+
+    def test_kindlei_to_crosspoint_writes_one_record_then_no_echo(self):
+        requests=[]
+        def respond(r):
+            requests.append(r)
+            self.assertEqual(r.method,'PUT');self.assertEqual(r.url.host,'sync.crosspointreader.com')
+            self.assertEqual(json.loads(r.content)['progress'],P2)
+            return httpx.Response(200)
+        result=self.run_case([Snapshot(200,P1),Snapshot(200,P1),Snapshot(200,P2)],respond)
+        self.assertEqual(result['status'],'synced');self.assertEqual(len(requests),1)
+
+    def test_crosspoint_to_kindle_keeps_other_annotations_out_of_payload(self):
+        requests=[]
+        def respond(r):
+            requests.append(r);self.assertEqual(r.method,'POST')
+            self.assertEqual(r.url.host,'cde-ta-g7g.amazon.com')
+            root=fromstring(r.content)
+            book=root.find('book');self.assertEqual(book.attrib['key'],'KINDLEBOOK')
+            self.assertEqual(book.attrib['guid'],'test-guid')
+            self.assertEqual([e.tag for e in book],['last_read'])
+            self.assertEqual(book.find('last_read').attrib['begin'],'299')
+            return httpx.Response(200)
+        result=self.run_case([Snapshot(10,P2),Snapshot(10,P2),Snapshot(299,P2)],respond)
+        self.assertEqual(result['status'],'synced');self.assertEqual(len(requests),1)
+
+    def test_in_sync_never_writes(self):
+        result=self.run_case([Snapshot(200,P2)],lambda r:self.fail('Unexpected write'))
+        self.assertEqual(result['writes'],0)
+
+    def test_position_changed_before_write_is_skipped(self):
+        result=self.run_case([Snapshot(10,P2),Snapshot(200,P2)],lambda r:self.fail('Unexpected write'))
+        self.assertEqual(result['status'],'changed');self.assertEqual(result['writes'],0)
+
+    def test_unknown_network_outcome_is_not_retried(self):
+        requests=[]
+        def respond(r):
+            requests.append(r);raise httpx.ReadTimeout('unknown')
+        with self.assertRaisesRegex(ReadFailure,'outcome is unknown'):
+            self.run_case([Snapshot(200,P1),Snapshot(200,P1)],respond)
+        self.assertEqual(len(requests),1)
+
+    def test_readback_failure_keeps_accepted_write_visible(self):
+        result=self.run_case([Snapshot(200,P1),Snapshot(200,P1),ReadFailure('offline')])
+        self.assertEqual(result['status'],'unconfirmed');self.assertEqual(result['writes'],1)
+
+
+if __name__=='__main__':unittest.main()
