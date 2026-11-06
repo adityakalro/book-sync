@@ -6,7 +6,7 @@ from unittest.mock import patch
 from xml.etree.ElementTree import fromstring
 
 import httpx
-from manual_sync import apply_handoff
+from manual_sync import apply_handoff, ManualSources
 from sync_dry_run import Snapshot, ReadFailure
 from test_sync_dry_run import LocationMap,P1,P2
 
@@ -25,6 +25,23 @@ class Sources:
 
 
 class HandoffTests(unittest.TestCase):
+    def test_progress_read_recovers_from_transient_dns_error(self):
+        calls=[]
+        def respond(request):
+            calls.append(request)
+            if len(calls)==1:raise httpx.ConnectError('DNS busy')
+            return httpx.Response(200,json={'result':'ok'})
+        with tempfile.TemporaryDirectory() as d:
+            auth=Path(d)/'auth.json';auth.write_text('{}')
+            with patch('audible.Authenticator.from_dict',return_value=None):
+                source=ManualSources(auth,'user','test-hash','KINDLEBOOK','cp-book',
+                    httpx.Client(transport=httpx.MockTransport(respond)))
+            try:
+                with patch('manual_sync.time.sleep'):
+                    self.assertEqual(source._get('CrossPoint','https://sync.crosspointreader.com/users/auth'),{'result':'ok'})
+            finally:source.close()
+        self.assertEqual([r.method for r in calls],['GET','GET'])
+
     def run_case(self,snapshots,respond=lambda r:httpx.Response(200)):
         profile={'document':'KINDLEBOOK','crosspoint_document':'cp-book',
                  'files':{'epub':{'path':'/test/book.epub'}}}
