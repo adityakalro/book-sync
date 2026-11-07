@@ -1,62 +1,85 @@
 # Book Sync
 
-Self-hosted book onboarding and manual reading-progress sync between Kindle personal documents and an X4 running CrossPoint. Designed for a small ARM64 Linux host such as DietPi.
+Book Sync helps you pick up where you left off across Send to Kindle documents, an X4 running CrossPoint, and Libby audiobooks. It runs on your own Linux host, including a Raspberry Pi Zero 2 W running DietPi. Open the private web page and click **Sync now** whenever you want to transfer your place.
 
-The private web page has a **Sync now** button. A click discovers new books, matches Readest cloud EPUBs to processed Send to Kindle documents, validates their maps, and applies forward-only progress handoffs. There is no scheduled reading-progress sync. Refreshing the page never starts a job.
+## Before you start
 
-## What it supports
+- A Linux host with Git and Python 3.13, including its `venv` module. On Debian 13 or a DietPi install based on it, install these with `sudo apt install git python3 python3-venv`. Run the command without `sudo` if you are already root.
+- An Amazon account with a **Send to Kindle** personal document and the matching EPUB in **Readest Cloud**. Use the same ebook edition in both places.
+- At least one sync destination. Use the sync account configured on your **CrossPoint X4**, an active **Libby audiobook loan**, or both.
 
-- Direct Amazon personal-document discovery and KFX downloads through a registered Kindle-compatible test client.
-- Readest reader-device pairing and cloud EPUB downloads without extracting browser cookies.
-- Exact normalized full-text matching, unique context checks, and map round trips. Ambiguous or different editions are held for review.
-- Compact text coordinates suitable for a low-memory Raspberry Pi.
-- Manual bidirectional handoffs, fresh-read guards, readback verification, and no automatic retry after an uncertain write.
-- A responsive LAN/WireGuard page with background job status and duplicate-click prevention.
+Each installation uses one household’s accounts. Kindle and Readest are required for book matching. Kindle positions are approximate to a location bucket, and Libby positions are approximate within matched chapters. Amazon purchases and other document formats have not been validated.
 
-Progress is approximate to a Kindle location bucket, not guaranteed to the exact paragraph. The coordinate bridge was experimentally validated for Send to Kindle documents; Amazon purchases, audiobooks, and other document formats are not validated. Cloud endpoints are unofficial and may change.
+## 1. Install Book Sync
 
-## Setup
-
-Use Python 3.13 and a virtual environment:
+Run these commands on the Linux host as the user who will run Book Sync:
 
 ```sh
+git clone https://github.com/adityakalro/book-sync.git
+cd book-sync
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-onboarding.txt
+install -d -m 700 .private .private/vendor
 ```
 
-The KFX parser is an external GPLv3 dependency and is **not vendored in this repository**. Supply an unmodified `kfxlib` source tree plus its bundled plugin modules, such as the one in [kindle.koplugin](https://github.com/kaikozlov/kindle.koplugin/tree/501488fd99ace3ea143a8693b9fa7c6421101d51/python). Set `--kfxlib-parent` when running onboarding, or place it at `.private/vendor/python`. Retain its license and source when deploying it.
-
-Create private, mode-600 credential files under `.private/`:
-
-- `amazon-device.json`: signed Amazon device credentials for progress reads/writes.
-- `amazon-kindle-download-device.json`: Kindle-compatible credentials for discovery and KFX delivery.
-- `readest-device.json`: reader key produced by Readest pairing.
-
-`kindle_download_device.py` prepares the download-device registration plan. Creating an Amazon device grants account access and must be explicitly approved by the account owner. Its `--login` mode provides a localhost sign-in helper using an Amazon authorization code with PKCE. Existing Amazon sessions can be too old for registration even after token refresh.
-
-Readest pairing:
+Install the external KFX parser into the private directory. This is the pinned source revision used by the project. Keep the checkout intact so the parser’s license and bundled modules stay with it.
 
 ```sh
-.venv/bin/python readest_source.py pair
-# Approve the displayed reader code in your Readest account, then:
-.venv/bin/python readest_source.py finish
+git init .private/vendor/kindle.koplugin
+git -C .private/vendor/kindle.koplugin fetch --depth 1 \
+  https://github.com/kaikozlov/kindle.koplugin.git 501488fd99ace3ea143a8693b9fa7c6421101d51
+git -C .private/vendor/kindle.koplugin checkout --detach FETCH_HEAD
+ln -s kindle.koplugin/python .private/vendor/python
 ```
 
-Readest grants a reader key library/statistics/progress access; this connector uses its catalog and file endpoints only. An EPUB must be uploaded to Readest Cloud, not only stored locally in an app.
-
-## Run the page
-
-Copy `web-config.example.json` to `.private/web-config.json` and configure the private interface addresses you will use. The default example permits localhost only. See [DEPLOYMENT.example.md](DEPLOYMENT.example.md) for a Linux service layout.
+## 2. Start the private web page
 
 ```sh
+cp web-config.example.json .private/web-config.json
 .venv/bin/python sync_page.py
 ```
 
-Open the page, connect the CrossPoint sync account used on the X4, and explicitly approve saving the password-equivalent API key on the host. The plaintext password is not saved. Later visits need only **Sync now**.
+Open [Setup](http://127.0.0.1:8780/setup) in a browser on the host. If the host is a headless Pi, leave Book Sync running and open a second terminal **on your computer**. Forward the port over SSH, substituting your own SSH username and Pi address:
 
-Before clicking, sync the reader you were using. Afterward, use **Sync Progress** on the X4 or **Sync to Furthest Page Read** on Kindle to pick up the cloud update. Newly mapped books need an initial progress record on both services. Intentional rewinds are not implemented.
+```sh
+ssh -N -L 127.0.0.1:8780:127.0.0.1:8780 YOUR_USER@YOUR_PI_HOST
+```
 
-Serve this only on a private LAN or through WireGuard. Do not port-forward it onto the public Internet. Network and Host checks plus same-origin/CSRF checks are built in; it is not a public multi-user authentication system. A localhost SSH tunnel is useful for the initial credential form.
+Keep the tunnel open while using the same [local Setup address](http://127.0.0.1:8780/setup). For startup at boot or access over a trusted LAN or WireGuard, see the [Linux service guide](DEPLOYMENT.example.md).
+
+## 3. Connect your accounts
+
+| Service | What to do in **Setup** |
+| --- | --- |
+| Kindle | Approve device registration and start Amazon sign-in. Sign in on Amazon, then paste the full address of the completion page into Book Sync and select **Complete connection**. |
+| Readest | Select **Get Readest code**, open the approval link, and approve the reader in Readest. Return to Book Sync and select **Check approval**. |
+| CrossPoint | Enter the sync username and password configured on the X4. Approve saving the sign-in key and select **Connect CrossPoint**. |
+| Libby | Select **Get Libby code**. In Libby, use **Menu → Copy To Another Device** and enter the code. Return to Book Sync and select **Check connection**. |
+
+Once Setup says **Ready to sync**, return to the **Sync** page. The credentials are saved with owner-only permissions under `.private/`. **Disconnect** removes a connection from this installation. Manage remote device or reader grants in the provider’s account settings.
+
+## 4. Sync your first book
+
+1. Send the EPUB to Kindle with **Add to your library** enabled. Upload the same edition to **Readest Cloud** so Book Sync can download it.
+2. Open the personal document on Kindle, turn a page, and sync Kindle. If you use an X4, download the EPUB from Readest, keep its `Title.epub` filename, use filename-based document matching, and run **Sync Progress** in the book. If you use Libby, open the matching audiobook loan, listen briefly, and sync your shelf.
+3. In Book Sync, click **Sync now**. The first run discovers the book and builds its map before transferring progress. A long book can take a minute or more on a small Pi. The result appears on the page.
+4. On the destination, use **Sync Progress** on X4, **Sync to Furthest Page Read** on Kindle, or **Shelf → Actions → Synchronize Shelf** in Libby. Open the book or audiobook to pick up the saved position.
+
+For future handoffs, sync the device you were using before clicking **Sync now**. Books with matching Libby loans use the newest saved progress timestamp. Books with Kindle and X4 progress alone move forward. Kindle keeps its furthest-read marker. Book Sync runs when you click the button.
+
+## Using only some services
+
+Kindle and Readest provide the book maps. Connect CrossPoint, Libby, or both. A book can sync between any two connected reading services with saved positions. A missing X4 position or an unread Kindle copy can be left out of an audio handoff. An audiobook loan without saved listening progress leaves Kindle and X4 on their normal ebook sync path. When fewer than two positions are available, the book is skipped.
+
+If a connected service returns a connection or authentication error, Book Sync reports it for that book. It can still process the other books in the job.
+
+## If a book does not sync
+
+- **Waiting for an EPUB in Readest:** Confirm the matching edition is in Readest Cloud and the Kindle copy is in your Send to Kindle library.
+- **Missing X4 progress:** Check the filename and matching mode, then open the book on the X4 and select **Sync Progress**.
+- **Libby title or chapters could not be matched:** Check that the active loan is the same book and author. Audio sync needs a compatible chapter sequence.
+- **Reader timestamps are too close:** Sync the device you want to use as the source, then retry. Kindle’s reported time has minute precision.
+- **Connection failed:** Check **Setup**, your network, and your device’s cloud sync. The providers’ unofficial endpoints may change.
 
 ## Onboarding and maps
 
@@ -80,7 +103,7 @@ Private output:
 
 Automatically generated profiles remain marked `ready_for_dry_run`; this records structural validation, not a per-book physical handoff test. The web page's explicit manual action is the separate authorization to apply a handoff. Source profiles do not enable scheduled writes.
 
-Library pagination must complete before the cursor is committed. Cache changes trigger rebuilds. Removed or newly ambiguous matches leave the ready registry. Only one manual job runs at a time, and every handoff rechecks both positions before writing.
+Library pagination must complete before the cursor is committed. Cache changes trigger rebuilds. Removed or newly ambiguous matches leave the ready registry. Only one manual job runs at a time, and every handoff rechecks the connected readers before writing.
 
 The standalone read-only poller remains available:
 
@@ -96,6 +119,6 @@ The standalone read-only poller remains available:
 
 The included **Book Sync Progress Test.epub** contains synthetic test prose. Real books, reading history, credentials, personal host details, and account-specific experiments are excluded. Optional real-book checks require a local profile supplied through `BOOK_SYNC_TEST_PROFILE`.
 
-See [SHARING.md](SHARING.md) for the publication boundary. The implementation is a personal prototype, not an Amazon, Readest, or CrossPoint supported integration.
+See [SHARING.md](SHARING.md) for the publication boundary. The implementation is a personal prototype, using unofficial service endpoints.
 
 Protocol references: [Kindle registration research](https://github.com/mkb79/kindle), [personal-document KFX delivery](https://github.com/kafkasl/ksync), [Readest reader APIs](https://github.com/readest/readest/tree/main/apps/readest-app/src/app/api/crosspoint), and [CrossPoint Sync API](https://github.com/crosspoint-reader/crosspoint-sync/blob/main/docs/API.md).

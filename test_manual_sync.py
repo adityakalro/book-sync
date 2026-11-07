@@ -1,13 +1,14 @@
 import json
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from xml.etree.ElementTree import fromstring
 
 import httpx
-from manual_sync import apply_handoff, ManualSources
-from sync_dry_run import Snapshot, ReadFailure
+from manual_sync import apply_handoff, ManualSources, sync_registry
+from sync_dry_run import MissingProgress, Snapshot, ReadFailure
 from test_sync_dry_run import LocationMap,P1,P2
 
 
@@ -25,6 +26,44 @@ class Sources:
 
 
 class HandoffTests(unittest.TestCase):
+    def test_crosspoint_missing_book_is_optional_for_audio_sync(self):
+        with tempfile.TemporaryDirectory() as d:
+            auth=Path(d)/'auth.json';auth.write_text('{}')
+            with patch('audible.Authenticator.from_dict',return_value=None):
+                source=ManualSources(auth,'user','test-hash','KINDLEBOOK','cp-book')
+            kindle={'payload':{'type':'PDOC','key':'KINDLEBOOK',
+                              'records':[{'type':'kindle.lpr','location':'150'}]}}
+            try:
+                missing=ReadFailure('CrossPoint read failed: HTTP 404')
+                with patch.object(source,'_get',side_effect=[kindle,missing,kindle,missing]):
+                    snapshot,_,_=source.details(allow_missing=True)
+                    self.assertEqual(snapshot.kindle_position,150)
+                    self.assertEqual(snapshot.crosspoint_xpointer,'')
+                    with self.assertRaises(MissingProgress):source.details()
+            finally:source.close()
+
+    def test_registry_falls_back_when_a_matching_audiobook_has_no_position(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            (root/'onboarding').mkdir()
+            path=root/'profile.json';path.write_text('{}')
+            (root/'onboarding/ready-profiles.json').write_text(json.dumps({'profiles':[
+                {'path':str(path),'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}]}))
+            (root/'crosspoint-auth.json').write_text('{"username":"test","auth_key":"test"}')
+            (root/'libby-device.json').write_text('{}')
+            profile={'document':'TEST','crosspoint_document':'test','x4_filename':'Book.epub',
+                     'files':{'epub':{'path':'/test/book.epub'}}}
+            libby=Mock();libby.match.return_value={'id':'loan'}
+            with patch('libby_sync.Libby',return_value=libby), \
+                    patch('manual_sync.load_profile',return_value=(profile,Mock(),'profile')), \
+                    patch('manual_sync.ManualSources'), \
+                    patch('three_way_sync.apply_three_way',return_value={'status':'unavailable','writes':0}), \
+                    patch('manual_sync.apply_handoff',return_value={'status':'in_sync','message':'Together','writes':0}) as ebook:
+                result=sync_registry(root)[0]
+            ebook.assert_called_once()
+            self.assertEqual(result['status'],'in_sync')
+            self.assertIn('Libby has no saved position',result['message'])
+
     def test_progress_read_recovers_from_transient_dns_error(self):
         calls=[]
         def respond(request):

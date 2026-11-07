@@ -33,17 +33,19 @@ def plan():
             'source_reference': 'https://github.com/mkb79/kindle/blob/main/src/kindle/register.py'}
 
 
-def register(prepared, access_token=None, authorization=None):
+def register(prepared, access_token=None, authorization=None, destination=None, data_root=None):
+    destination = Path(destination) if destination is not None else DESTINATION
+    data_root = Path(data_root) if data_root is not None else ROOT/'.private'
     if (prepared['registration_endpoint'] != 'https://api.amazon.com/auth/register'
             or prepared['device_type'] != 'AGZZ1ST63LKBW'
             or prepared['device_name'] != 'Book Sync Pi Download Test'
             or prepared['app_name'] != 'Kindle for iOS'
             or not re.fullmatch(r'[A-F0-9]{32}', prepared['device_serial'])):
         raise ValueError('Plan differs from the reviewed Kindle download test device')
-    if DESTINATION.exists():
+    if destination.exists():
         raise ValueError('Download-device credentials already exist; refusing another registration')
     if authorization is None and access_token is None:
-        current = json.loads((ROOT/'.private/amazon-device.json').read_text())
+        current = json.loads((data_root/'amazon-device.json').read_text())
         auth = Authenticator.from_dict(current)
         if float(current['expires']) <= time.time()+60:
             try:
@@ -66,7 +68,7 @@ def register(prepared, access_token=None, authorization=None):
             failure = response.json()
         except ValueError:
             failure = {'response_format': 'non-JSON', 'bytes': len(response.content)}
-        private_json(ROOT/'.private/kindle-download-registration-failure.json',
+        private_json(data_root/'kindle-download-registration-failure.json',
                      {'http_status': response.status_code, 'response': failure})
         raise ValueError(f'Device registration failed: HTTP {response.status_code}')
     data = response.json().get('response', {}).get('success', {})
@@ -78,12 +80,11 @@ def register(prepared, access_token=None, authorization=None):
                    'access_token': bearer.get('access_token'), 'refresh_token': bearer.get('refresh_token'),
                    'expires': time.time()+int(bearer.get('expires_in', 0)), 'locale_code': 'us',
                    'device_info': data.get('extensions', {}).get('device_info', {})}
-    private_json(DESTINATION, credentials)
+    private_json(destination, credentials)
     return {'registered': True, 'device_name': prepared['device_name'], 'credentials_saved_privately': True}
 
 
-def serve_login(prepared):
-    origin = 'http://127.0.0.1:8768'
+def login_details(prepared):
     client_id = (prepared['device_serial']+'#'+prepared['device_type']).encode().hex()
     verifier = create_code_verifier()
     challenge = create_s256_code_challenge(verifier)
@@ -98,7 +99,12 @@ def serve_login(prepared):
               'openid.oa2.response_type': 'code', 'openid.ns': 'http://specs.openid.net/auth/2.0',
               'openid.oa2.code_challenge_method': 'S256', 'openid.oa2.code_challenge': challenge,
               'openid.pape.max_auth_age': '300', 'openid.oa2.scope': 'device_auth_access'}
-    login_url = 'https://www.amazon.com/ap/signin?'+urlencode(params)
+    return 'https://www.amazon.com/ap/signin?'+urlencode(params), client_id, verifier.decode()
+
+
+def serve_login(prepared):
+    origin = 'http://127.0.0.1:8768'
+    login_url, client_id, verifier_text = login_details(prepared)
     csrf = secrets.token_urlsafe(32)
     completed = False
 
@@ -149,7 +155,7 @@ def serve_login(prepared):
                 self.respond(400,'Completion URL has no authorization code or sign-in token');return
             try:
                 authorization = {'client_id':client_id, 'authorization_code':code,
-                                 'code_verifier':verifier.decode(), 'code_algorithm':'SHA-256',
+                                 'code_verifier':verifier_text, 'code_algorithm':'SHA-256',
                                  'client_domain':'DeviceLegacy'} if code else None
                 result = register(prepared, access_token=token or None, authorization=authorization)
             except (ValueError,httpx.HTTPError):

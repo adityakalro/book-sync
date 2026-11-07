@@ -8,7 +8,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 import httpx
 
-from sync_dry_run import (DryRunEngine, ReadFailure, ReadOnlySources, SERVER,
+from sync_dry_run import (DryRunEngine, MissingProgress, ReadFailure, ReadOnlySources, SERVER,
                           Snapshot, kindle_position, crosspoint_progress,
                           load_profile, private_json)
 from text_mapping import epub_position_details
@@ -27,13 +27,25 @@ class ManualSources(ReadOnlySources):
                 if not str(error).endswith('connection failed') or attempt==2:raise
                 time.sleep(0.25)
 
-    def details(self):
+    def details(self, *, allow_missing=False):
         kindle=self._get('Kindle',KINDLE_URL,auth=self.auth,
                          params={'type':'PDOC','key':self.kindle_document})
-        cp=self._get('CrossPoint',f'{SERVER}/syncs/progress/{self.crosspoint_document}',headers=self.headers)
+        try:
+            position=kindle_position(kindle,self.kindle_document)
+        except MissingProgress:
+            if not allow_missing:raise
+            position=None
+        if not self.headers.get('x-auth-key'):
+            return Snapshot(position, ''),kindle,{}
+        try:
+            cp=self._get('CrossPoint',f'{SERVER}/syncs/progress/{self.crosspoint_document}',headers=self.headers)
+        except ReadFailure as error:
+            if str(error) != 'CrossPoint read failed: HTTP 404':raise
+            cp={}
         if not cp:
-            raise ReadFailure('Open this book on the X4 and use Sync Progress first')
-        snap=Snapshot(kindle_position(kindle,self.kindle_document),
+            if allow_missing:return Snapshot(position, ''),kindle,{}
+            raise MissingProgress('Open this book on the X4 and use Sync Progress first.')
+        snap=Snapshot(position,
                       crosspoint_progress(cp,self.crosspoint_document),
                       str(cp.get('device','')),cp.get('timestamp'))
         return snap,kindle,cp
@@ -111,9 +123,14 @@ def apply_handoff(profile,mapper,profile_id,sources,directory):
 
 def sync_registry(data_root,notify=lambda message:None):
     data_root=Path(data_root)
-    credentials=json.loads((data_root/'crosspoint-auth.json').read_text())
+    crosspoint=data_root/'crosspoint-auth.json'
+    credentials=json.loads(crosspoint.read_text()) if crosspoint.exists() else {}
     registry=json.loads((data_root/'onboarding/ready-profiles.json').read_text())
     results=[]
+    libby=None
+    if (data_root/'libby-device.json').exists():
+        from libby_sync import Libby
+        libby=Libby(data_root/'libby-device.json')
     for item in registry['profiles']:
         notify('Checking a matched book…')
         # Registry path/hash must agree; each profile then revalidates its files,
@@ -129,9 +146,28 @@ def sync_registry(data_root,notify=lambda message:None):
             profile,mapper,profile_id=load_profile(path)
             title=profile.get('x4_filename','Book.epub').removesuffix('.epub')
             notify('Syncing '+title+'…')
-            sources=ManualSources(data_root/'amazon-device.json',credentials['username'],
-                credentials['auth_key'],profile['document'],profile['crosspoint_document'])
-            result=apply_handoff(profile,mapper,profile_id,sources,data_root/'manual-sync'/profile['document'])
+            loan=libby.match(title,profile['files']['epub']['path']) if libby else None
+            if not loan and not credentials:
+                results.append({'title':title,'status':'skipped','writes':0,
+                                'message':'No matching Libby audiobook or connected X4.'})
+                continue
+            sources=ManualSources(data_root/'amazon-device.json',credentials.get('username',''),
+                credentials.get('auth_key',''),profile['document'],profile['crosspoint_document'])
+            if loan:
+                from three_way_sync import apply_three_way
+                result=apply_three_way(profile,mapper,sources,
+                    data_root/'manual-sync'/profile['document'],libby,loan)
+                if result['status']=='unavailable':
+                    if credentials:
+                        result=apply_handoff(profile,mapper,profile_id,sources,
+                            data_root/'manual-sync'/profile['document'])
+                        result['message']+=' Libby has no saved position for this book.'
+                    else:
+                        result['status']='skipped'
+            else:
+                result=apply_handoff(profile,mapper,profile_id,sources,data_root/'manual-sync'/profile['document'])
+        except MissingProgress as error:
+            result={'status':'skipped','message':str(error),'writes':0}
         except ReadFailure as error:
             result={'status':'error','message':str(error),'writes':0}
         except (ValueError,OSError,KeyError):
@@ -139,4 +175,5 @@ def sync_registry(data_root,notify=lambda message:None):
         finally:
             if sources:sources.close()
         results.append({'title':title,**result})
+    if libby:libby.close()
     return results

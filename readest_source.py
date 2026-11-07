@@ -16,22 +16,27 @@ AUTH = ROOT/'.private/readest-device.json'
 PENDING = ROOT/'.private/readest-pairing.json'
 
 
-def pairing_start():
-    if AUTH.exists():
+def pairing_start(auth=None, pending=None):
+    auth = Path(auth) if auth is not None else AUTH
+    pending = Path(pending) if pending is not None else PENDING
+    if auth.exists():
         raise ValueError('A Readest reader is already paired; revoke it before replacing credentials')
     with httpx.Client(timeout=20, follow_redirects=False) as c:
         response = c.post(ORIGIN+'/api/crosspoint/device/code')
         if response.status_code != 200:
             raise ValueError(f'Readest pairing returned HTTP {response.status_code}')
         data = response.json()
-    if urlsplit(data['verification_uri_complete']).netloc != 'web.readest.com':
+    verification = urlsplit(data['verification_uri_complete'])
+    if verification.scheme != 'https' or verification.netloc != 'web.readest.com':
         raise ValueError('Unexpected pairing origin')
-    private_json(PENDING, data)
+    private_json(pending, data)
     return {k:data[k] for k in ('user_code','verification_uri_complete','expires_in')}
 
 
-def pairing_finish():
-    data = json.loads(PENDING.read_text())
+def pairing_finish(auth=None, pending=None):
+    auth = Path(auth) if auth is not None else AUTH
+    pending = Path(pending) if pending is not None else PENDING
+    data = json.loads(pending.read_text())
     with httpx.Client(timeout=20, follow_redirects=False) as c:
         r = c.post(ORIGIN+'/api/crosspoint/device/token', json={'device_code':data['device_code']})
     if r.status_code != 200:
@@ -39,8 +44,8 @@ def pairing_finish():
     token = r.json()
     if not token.get('access_token'):
         raise ValueError('Readest returned no reader key')
-    private_json(AUTH, token)
-    PENDING.unlink(missing_ok=True)
+    private_json(auth, token)
+    pending.unlink(missing_ok=True)
     return {'paired':True,'credentials_saved_privately':True}
 
 

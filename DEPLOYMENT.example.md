@@ -1,53 +1,80 @@
-# Linux deployment example
+# Run Book Sync as a Linux service
 
-Personal connection details belong in an ignored local `DEPLOYMENT.md`.
-Use your own SSH host and username; no credentials should be entered in this file.
+This guide installs Book Sync on a Linux host with systemd, such as DietPi. For a quick trial from a terminal, use the [README](README.md). Run the commands below as root, or use `sudo` for the administrative commands.
 
-The supplied `book-sync-web.service` expects:
+## 1. Install the app and create its data directory
 
-- Code and virtual environment at `/opt/book-sync`.
-- A dedicated `book-sync` user and group.
-- Private data at `/var/lib/book-sync`, mode 700, owned by `book-sync`.
-- A symlink from `/opt/book-sync/.private` to `/var/lib/book-sync`.
-- Existing Amazon and Readest credential files transferred privately, mode 600.
-- The external KFX parser at `.private/vendor/python`.
-
-Install `requirements-onboarding.txt` inside the virtual environment. For a host
-that cannot reach PyPI, download compatible wheels on another machine and use
-`pip install --no-index --find-links /path/to/wheels -r requirements-onboarding.txt`.
-Use wheel tags appropriate to the destination Python version and ARM architecture.
-
-Existing maps and state can be transferred without repeating account pairing.
-Relocate their paths and registry fingerprints before starting the new service:
+On Debian 13, install Git and Python 3.13 with its virtual environment module:
 
 ```sh
-/opt/book-sync/.venv/bin/python /opt/book-sync/dietpi_relocate.py \
+apt update
+apt install git python3 python3-venv
+```
+
+For a fresh installation:
+
+```sh
+useradd --system --user-group --home-dir /var/lib/book-sync --shell /usr/sbin/nologin book-sync
+install -d -o book-sync -g book-sync -m 700 /var/lib/book-sync
+git clone https://github.com/adityakalro/book-sync.git /opt/book-sync
+cd /opt/book-sync
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-onboarding.txt
+ln -s /var/lib/book-sync .private
+install -o book-sync -g book-sync -m 600 web-config.example.json .private/web-config.json
+```
+
+The service runs as `book-sync`. Keep the app and virtual environment under `/opt/book-sync`, and store credentials and book maps under `/var/lib/book-sync`.
+
+From `/opt/book-sync`, open a shell as the service user:
+
+```sh
+runuser -u book-sync -- sh
+```
+
+In that shell, run `install -d -m 700 .private/vendor`, then follow the [KFX parser installation commands](README.md#1-install-book-sync). Exit the shell when finished. If PyPI is unavailable on the host, transfer wheels that match its Python version and CPU architecture and install with `pip install --no-index --find-links /path/to/wheels -r requirements-onboarding.txt`.
+
+## 2. Start the service and connect accounts
+
+```sh
+install -m 644 /opt/book-sync/book-sync-web.service /etc/systemd/system/book-sync-web.service
+systemctl daemon-reload
+systemctl enable --now book-sync-web.service
+systemctl status book-sync-web.service --no-pager
+```
+
+The example configuration listens on localhost. On your computer, keep this SSH tunnel open:
+
+```sh
+ssh -N -L 127.0.0.1:8780:127.0.0.1:8780 YOUR_USER@YOUR_PI_HOST
+```
+
+Open [Setup](http://127.0.0.1:8780/setup), [connect your accounts](README.md#3-connect-your-accounts), and [sync a first book](README.md#4-sync-your-first-book). The web page starts at boot. Sync runs when you click **Sync now**. If you previously enabled the optional onboarding timer service, disable `book-sync-onboarding.service` to use the page on demand.
+
+## 3. Optional LAN or WireGuard access
+
+Edit `/var/lib/book-sync/web-config.json`. Set `bind` to a private interface address, or use `0.0.0.0` for multiple interfaces. Keep the trusted client ranges in `networks` and list each address you actually visit in `hosts`, including its port. For example, replace the example LAN address and subnet below with your own. Add your WireGuard address and subnet if you use it.
+
+```json
+{
+  "bind": "0.0.0.0",
+  "port": 8780,
+  "hosts": ["127.0.0.1:8780", "192.168.1.20:8780"],
+  "networks": ["127.0.0.0/8", "192.168.1.0/24"]
+}
+```
+
+Run `systemctl restart book-sync-web.service` after changing the file. Use a trusted private LAN, SSH tunnel, or WireGuard. Keep port 8780 off public router forwards. The page shares the installation’s accounts with clients allowed by its network rules.
+
+If the page fails to start, check `journalctl -u book-sync-web.service -n 30 --no-pager`. A **Private network required** or access-denied response usually means the address or client subnet is missing from the configuration.
+
+## Moving an existing installation
+
+Transfer the saved private data over SSH, preserve file permissions, and ensure the service user owns it. Existing accounts can be reused. Relocate map paths and registry fingerprints before starting the service:
+
+```sh
+runuser -u book-sync -- /opt/book-sync/.venv/bin/python /opt/book-sync/dietpi_relocate.py \
   --data-root /var/lib/book-sync --previous-root /path/to/old/private
 ```
 
-Copy `web-config.example.json` to the private data directory. Add the LAN and
-WireGuard IP:port pairs you will use to `hosts`, and the corresponding trusted
-client subnets to `networks`. Set `bind` appropriately. Keep access private;
-do not add a public router port forward. The WireGuard tunnel supplies encryption
-for remote access. An SSH tunnel can protect initial setup from a local computer:
-
-```sh
-ssh -N -L 127.0.0.1:8780:127.0.0.1:8780 YOUR_SSH_HOST
-```
-
-After testing, install and enable `book-sync-web.service` with systemd.
-Disable the old `book-sync-onboarding.service` if previously installed. The web
-service starts at boot but runs discovery/progress updates only after a click.
-
-```sh
-systemctl enable --now book-sync-web.service
-systemctl status book-sync-web.service --no-pager
-journalctl -u book-sync-web.service -n 20 --no-pager
-```
-
-Verify account access, a fresh download, map checks, and a manual sync on the
-destination before shutting down the old host. Preserve private rollback copies.
-
-The compact coordinate representation avoids millions of retained Python XPath
-strings on low-memory hosts. Full-book validation still takes CPU time; the
-service runs at reduced CPU/I/O priority and processes books one at a time.
+Verify account access, a fresh download, and a manual sync on the new host before retiring the old installation. Keep personal SSH addresses and connection notes in the ignored local `DEPLOYMENT.md`.

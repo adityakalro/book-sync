@@ -51,7 +51,7 @@ def digest(data):
 
 @dataclass(frozen=True)
 class Snapshot:
-    kindle_position: int
+    kindle_position: int | None
     crosspoint_xpointer: str
     crosspoint_device: str = ''
     crosspoint_timestamp: int | float | None = None
@@ -59,6 +59,10 @@ class Snapshot:
 
 class ReadFailure(Exception):
     """An error safe to show without request headers, tokens or response bodies."""
+
+
+class MissingProgress(ReadFailure):
+    """A service confirmed the book has no saved progress marker."""
 
 
 def kindle_position(data, document):
@@ -77,7 +81,7 @@ def kindle_position(data, document):
                 raise ReadFailure('Kindle returned an invalid last-read position')
             values.append(int(value))
     if not values:
-        raise ReadFailure('Kindle returned no last-read position')
+        raise MissingProgress('Open the book on Kindle and sync it first.')
     return max(values)
 
 

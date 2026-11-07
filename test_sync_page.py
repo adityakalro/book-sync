@@ -29,9 +29,10 @@ class PageTests(unittest.TestCase):
 
     def test_getting_page_or_status_never_starts_a_sync(self):
         jobs=Mock();jobs.status.return_value={'running':False}
-        for path in ('/','/api/status'):
+        for path in ('/','/setup','/api/status'):
             h=self.handler(jobs,path);h.do_GET();self.assertEqual(h.code,200)
         jobs.start.assert_not_called()
+        jobs.setup_action.assert_not_called()
 
     def test_public_sources_and_unexpected_hosts_are_rejected(self):
         for opts in ({'ip':'203.0.113.9'},{'host':'evil.example:8780'}):
@@ -41,6 +42,23 @@ class PageTests(unittest.TestCase):
         for origin in ('http://evil.example','http://127.0.0.1:8780'):
             jobs=Mock();h=self.handler(jobs,'/api/sync',origin=origin);h.do_POST()
             self.assertEqual(h.code,403);jobs.start.assert_not_called()
+
+    def test_setup_post_needs_same_origin_and_page_token(self):
+        import re
+        jobs=Mock()
+        jobs.setup_action.return_value={'code':'12345678'}
+        body=b'{"service":"libby","action":"start","consent":true}'
+        h=self.handler(jobs,'/setup',origin='http://127.0.0.1:8780',body=body)
+        h.do_GET()
+        token=re.search(rb"const csrf='([^']+)'",h.wfile.getvalue())[1].decode()
+        h.path='/api/setup'
+        h.do_POST()
+        self.assertEqual(h.code,403)
+        jobs.setup_action.assert_not_called()
+        h.headers['X-Book-Sync']=token
+        h.do_POST()
+        self.assertEqual(h.code,200)
+        jobs.setup_action.assert_called_once()
 
     def test_concurrent_clicks_share_one_job(self):
         started=threading.Event();finish=threading.Event()
