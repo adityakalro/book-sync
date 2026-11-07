@@ -3,8 +3,8 @@ import unittest
 from pathlib import Path
 from zipfile import ZipFile
 
-from book_sync.mapping.chapters import ChapterMap
-from book_sync.mapping.text import epub_index
+from placekeeper.mapping.chapters import ChapterMap
+from placekeeper.mapping.text import epub_index
 
 
 class ChapterMappingTests(unittest.TestCase):

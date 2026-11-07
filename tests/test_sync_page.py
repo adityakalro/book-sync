@@ -10,8 +10,8 @@ import unittest
 from unittest.mock import patch,Mock
 import httpx
 
-from book_sync.web.app import Jobs,handler_for
-from book_sync.sync.dry_run import private_json
+from placekeeper.web.app import Jobs,handler_for
+from placekeeper.sync.dry_run import private_json
 
 
 class PageTests(unittest.TestCase):
@@ -20,7 +20,7 @@ class PageTests(unittest.TestCase):
         h=cls.__new__(cls);h.path=path;h.client_address=(ip,1234);h.headers=Message()
         h.headers['Host']=host;h.headers['Content-Length']=str(len(body))
         if origin:h.headers['Origin']=origin
-        if token:h.headers['X-Book-Sync']=token
+        if token:h.headers['X-Placekeeper']=token
         h.rfile=io.BytesIO(body);h.wfile=io.BytesIO();h.code=None;h.response_headers={}
         h.send_response=lambda status:setattr(h,'code',status)
         h.send_header=lambda k,v:h.response_headers.update({k:v})
@@ -54,7 +54,7 @@ class PageTests(unittest.TestCase):
         h.do_POST()
         self.assertEqual(h.code,403)
         jobs.setup_action.assert_not_called()
-        h.headers['X-Book-Sync']=token
+        h.headers['X-Placekeeper']=token
         h.do_POST()
         self.assertEqual(h.code,200)
         jobs.setup_action.assert_called_once()
@@ -88,7 +88,7 @@ class PageTests(unittest.TestCase):
             h.do_POST()
             self.assertEqual(h.code, 403)
             self.assertFalse(jobs.schedule_enabled)
-            h.headers['X-Book-Sync'] = token
+            h.headers['X-Placekeeper'] = token
             h.do_POST()
             self.assertEqual(h.code, 200)
             self.assertTrue(Jobs(d).status()['schedule_enabled'])
@@ -104,7 +104,7 @@ class PageTests(unittest.TestCase):
             return []
         with tempfile.TemporaryDirectory() as d:
             jobs = Jobs(d, onboard=onboard, sync=sync)
-            with patch('book_sync.web.app.monotonic', return_value=100) as clock:
+            with patch('placekeeper.web.app.monotonic', return_value=100) as clock:
                 jobs.set_schedule(True)
                 self.assertEqual(jobs.next_sync, 1900)
                 clock.return_value = 1900
@@ -128,7 +128,7 @@ class PageTests(unittest.TestCase):
             jobs=Jobs(d)
             with self.assertRaises(ValueError):jobs.connect('user','private-password',False)
             response=Mock(status_code=200);response.json.return_value={'authorized':'OK'}
-            with patch('book_sync.plugins.crosspoint.client.httpx.get',return_value=response):jobs.connect('user','private-password',True)
+            with patch('placekeeper.plugins.crosspoint.client.httpx.get',return_value=response):jobs.connect('user','private-password',True)
             data=(Path(d)/'crosspoint-auth.json').read_text()
             self.assertNotIn('private-password',data)
             self.assertEqual((Path(d)/'crosspoint-auth.json').stat().st_mode&0o777,0o600)
@@ -137,8 +137,8 @@ class PageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             jobs=Jobs(d)
             response=Mock(status_code=200);response.json.return_value={'authorized':'OK'}
-            with patch('book_sync.plugins.crosspoint.client.httpx.get',side_effect=[httpx.ConnectError('DNS busy'),response]) as get, \
-                    patch('book_sync.plugins.crosspoint.client.time.sleep'):
+            with patch('placekeeper.plugins.crosspoint.client.httpx.get',side_effect=[httpx.ConnectError('DNS busy'),response]) as get, \
+                    patch('placekeeper.plugins.crosspoint.client.time.sleep'):
                 jobs.connect('user','private-password',True)
             self.assertEqual(get.call_count,2)
             self.assertTrue((Path(d)/'crosspoint-auth.json').exists())
@@ -146,7 +146,7 @@ class PageTests(unittest.TestCase):
     def test_rejected_credentials_are_not_retried_or_saved(self):
         with tempfile.TemporaryDirectory() as d:
             response=Mock(status_code=401)
-            with patch('book_sync.plugins.crosspoint.client.httpx.get',return_value=response) as get:
+            with patch('placekeeper.plugins.crosspoint.client.httpx.get',return_value=response) as get:
                 with self.assertRaisesRegex(ValueError,'did not accept'):
                     Jobs(d).connect('user','wrong',True)
             self.assertEqual(get.call_count,1)

@@ -11,7 +11,7 @@ class RelocationTests(unittest.TestCase):
     def test_moves_paths_and_rehashes_registry_without_changing_book_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory).resolve()
-            old='/old-host/book-sync/.private'
+            old='/old-host/placekeeper/.private'
             book=root/'onboarding/books/BOOK'
             book.mkdir(parents=True)
             epub=root/'onboarding/epubs/book.epub';epub.parent.mkdir();epub.write_bytes(b'book-data')

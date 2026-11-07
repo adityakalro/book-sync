@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from zipfile import ZipFile
 
-from book_sync.mapping.text import Mapper, TextIndex, epub_index, epub_position_details
+from placekeeper.mapping.text import Mapper, TextIndex, epub_index, epub_position_details
 
 
 class MappingTests(unittest.TestCase):

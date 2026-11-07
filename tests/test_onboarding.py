@@ -9,32 +9,32 @@ from zipfile import ZipFile
 
 import httpx
 
-from book_sync.plugins.kindle.catalog import AmazonCatalog
-from book_sync.plugins.kindle.onboarding import Onboarder
-from book_sync.sync.dry_run import load_profile, private_json
-from book_sync.mapping.text import epub_index
+from placekeeper.plugins.kindle.catalog import AmazonCatalog
+from placekeeper.plugins.kindle.onboarding import Onboarder
+from placekeeper.sync.dry_run import load_profile, private_json
+from placekeeper.mapping.text import epub_index
 
 DOC='AUTOMATICBOOK0001'
-TITLE='Book Sync Progress Test'
+TITLE='Placekeeper Progress Test'
 
 
 class FakeCatalog:
     def __init__(self):
-        self.documents={DOC:{'document':DOC,'title':TITLE,'authors':['Book Sync']}}
+        self.documents={DOC:{'document':DOC,'title':TITLE,'authors':['Placekeeper']}}
     def pull(self, previous):
         return {'cursor':'complete','documents':dict(self.documents),'pages':2}
 
 
 class FakeReadest:
     def __init__(self):
-        self.items=[{'id':'a'*28,'title':TITLE,'author':'Book Sync'}]
+        self.items=[{'id':'a'*28,'title':TITLE,'author':'Placekeeper'}]
         self.download_count=0
     def books(self):return list(self.items)
     def download(self, book, directory):
         self.download_count+=1
         directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)
         p=directory/(book['id']+'.epub')
-        shutil.copyfile(Path(__file__).parent/'fixtures/Book Sync Progress Test.epub',p)
+        shutil.copyfile(Path(__file__).parent/'fixtures/Placekeeper Progress Test.epub',p)
         return p
 
 
@@ -51,14 +51,14 @@ class OnboardingTests(unittest.TestCase):
             (Path(directory)/(doc+'.azw8')).write_bytes(b'CONTfixture')
         def extract(engine,doc,directory):
             directory=directory/'map';directory.mkdir(parents=True,exist_ok=True)
-            text=epub_index(Path(__file__).parent/'fixtures/Book Sync Progress Test.epub').text
+            text=epub_index(Path(__file__).parent/'fixtures/Placekeeper Progress Test.epub').text
             private_json(directory/'content.json',{'data':[{'type':1,'content':text,'position':0}]})
             private_json(directory/'locations.json',[{'location':i+1,'position':p,'length':100}
                          for i,p in enumerate(range(0,len(text),100))])
             return directory/'content.json',directory/'locations.json'
         self.stack=contextlib.ExitStack()
-        self.stack.enter_context(patch('book_sync.plugins.kindle.onboarding.probe',side_effect=probe))
-        self.stack.enter_context(patch('book_sync.plugins.kindle.onboarding.download_kfx',side_effect=download))
+        self.stack.enter_context(patch('placekeeper.plugins.kindle.onboarding.probe',side_effect=probe))
+        self.stack.enter_context(patch('placekeeper.plugins.kindle.onboarding.download_kfx',side_effect=download))
         self.stack.enter_context(patch.object(Onboarder,'extract',extract))
     def tearDown(self):
         self.stack.close();self.temp.cleanup()
@@ -88,7 +88,7 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(self.engine().run_once()['events'][0]['status'],'ready')
 
     def test_same_text_multiple_epubs_is_quarantined(self):
-        self.source.items.append({'id':'b'*28,'title':TITLE,'author':'Book Sync'})
+        self.source.items.append({'id':'b'*28,'title':TITLE,'author':'Placekeeper'})
         self.assertEqual(self.engine().run_once()['events'][0]['status'],'needs_review')
         self.assertEqual(json.loads((self.root/'ready-profiles.json').read_text())['profiles'],[])
 
@@ -120,7 +120,7 @@ class OnboardingTests(unittest.TestCase):
 
     def test_new_ambiguity_withdraws_old_profile_from_registry(self):
         self.engine().run_once()
-        self.source.items.append({'id':'b'*28,'title':TITLE,'author':'Book Sync'})
+        self.source.items.append({'id':'b'*28,'title':TITLE,'author':'Placekeeper'})
         self.assertEqual(self.engine().run_once()['events'][0]['status'],'needs_review')
         self.assertEqual(json.loads((self.root/'ready-profiles.json').read_text())['profiles'],[])
 
@@ -152,7 +152,7 @@ class PaginationTests(unittest.TestCase):
             return httpx.Response(200,text='<response><has_more>false</has_more><sync_time>two</sync_time><removal_list><meta_data><ASIN>OLD</ASIN></meta_data></removal_list></response>')
         with tempfile.TemporaryDirectory() as d:
             auth=Path(d)/'auth';auth.write_text('{}')
-            with patch('book_sync.plugins.kindle.catalog.Authenticator.from_dict',return_value=None):
+            with patch('placekeeper.plugins.kindle.catalog.Authenticator.from_dict',return_value=None):
                 catalog=AmazonCatalog(auth,httpx.Client(transport=httpx.MockTransport(respond)))
             try:r=catalog.pull({'documents':{'OLD':{}}})
             finally:catalog.close()
@@ -162,7 +162,7 @@ class PaginationTests(unittest.TestCase):
     def test_nonadvancing_pagination_cannot_commit(self):
         with tempfile.TemporaryDirectory() as d:
             auth=Path(d)/'auth';auth.write_text('{}')
-            with patch('book_sync.plugins.kindle.catalog.Authenticator.from_dict',return_value=None):
+            with patch('placekeeper.plugins.kindle.catalog.Authenticator.from_dict',return_value=None):
                 catalog=AmazonCatalog(auth,httpx.Client(transport=httpx.MockTransport(lambda r:httpx.Response(200,text='<response><has_more>true</has_more><sync_time>same</sync_time></response>'))))
             previous={'cursor':'same','documents':{}}
             try:

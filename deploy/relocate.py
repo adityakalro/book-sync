@@ -1,4 +1,4 @@
-"""Relocate saved Book Sync paths after an authorized host migration.
+"""Relocate saved Placekeeper paths after an authorized host migration.
 
 Run on the destination before its watcher starts. Does not contact services.
 """
@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from book_sync.storage import private_json
+from placekeeper.storage import private_json
 
 
 def relocate(data_root, previous_root):

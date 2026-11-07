@@ -5,7 +5,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-import book_sync.plugins.kindle.registration as device
+import placekeeper.plugins.kindle.registration as device
 
 
 class RegistrationTests(unittest.TestCase):
@@ -32,7 +32,7 @@ class RegistrationTests(unittest.TestCase):
             self.assertEqual(source.read_bytes(), original)
             self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
             self.assertEqual(post.call_args.args[0], 'https://api.amazon.com/auth/register')
-            self.assertEqual(post.call_args.kwargs['json']['registration_data']['device_name'], 'Book Sync Pi Download Test')
+            self.assertEqual(post.call_args.kwargs['json']['registration_data']['device_name'], 'Placekeeper')
             self.assertEqual(post.call_args.kwargs['json']['requested_token_type'], ['bearer', 'mac_dms'])
 
     def test_unreviewed_destination_rejected_before_using_credentials(self):

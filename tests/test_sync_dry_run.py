@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from book_sync.sync.dry_run import (DryRunEngine, ReadFailure, ReadOnlySources, Snapshot,
+from placekeeper.sync.dry_run import (DryRunEngine, ReadFailure, ReadOnlySources, Snapshot,
                           crosspoint_progress, kindle_position, load_profile,
                           private_json, run_loop, state_lock)
 
@@ -165,7 +165,7 @@ class PersistenceTests(unittest.TestCase):
                 if isinstance(result, Exception):
                     raise result
                 return result
-            with patch('book_sync.sync.dry_run.time.sleep'), contextlib.redirect_stdout(io.StringIO()):
+            with patch('placekeeper.sync.dry_run.time.sleep'), contextlib.redirect_stdout(io.StringIO()):
                 status = run_loop(engine, read, state, log, count=3, interval=1)
             events = [json.loads(line) for line in log.read_text().splitlines()]
             self.assertEqual(status, 1)
@@ -197,7 +197,7 @@ class PersistenceTests(unittest.TestCase):
                 load_profile(path)
 
 
-PRIVATE_PROFILE=os.environ.get('BOOK_SYNC_TEST_PROFILE','')
+PRIVATE_PROFILE=os.environ.get('PLACEKEEPER_TEST_PROFILE','')
 
 
 @unittest.skipUnless(PRIVATE_PROFILE and Path(PRIVATE_PROFILE).is_file(),

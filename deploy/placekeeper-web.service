@@ -1,0 +1,21 @@
+[Unit]
+Description=Placekeeper private manual sync page
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=placekeeper
+Group=placekeeper
+WorkingDirectory=/opt/placekeeper
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/placekeeper/.venv/bin/python -m placekeeper.web.app
+Restart=on-failure
+RestartSec=10
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+OOMScoreAdjust=500
+
+[Install]
+WantedBy=multi-user.target

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 import httpx
-from book_sync.plugins.readest.client import ReadestSource
+from placekeeper.plugins.readest.client import ReadestSource
 
 
 class ReadestTests(unittest.TestCase):
@@ -45,7 +45,7 @@ class ReadestTests(unittest.TestCase):
 
     def test_cloud_file_request_never_carries_reader_key(self):
         requests=[]
-        epub=Path(Path(__file__).parent/'fixtures/Book Sync Progress Test.epub').read_bytes()
+        epub=Path(Path(__file__).parent/'fixtures/Placekeeper Progress Test.epub').read_bytes()
         def respond(request):
             requests.append(request)
             if request.url.host=='web.readest.com':

@@ -11,21 +11,21 @@ from unittest.mock import Mock, patch
 
 import httpx
 
-from book_sync import plugins
-from book_sync.errors import MissingProgress, ReadFailure
-from book_sync.plugins.contracts import Book, Observation, Plugin
-from book_sync.plugins.libby.reader import LibbyReader, open_reader as open_libby
-from book_sync.plugins.registry import installed
-from book_sync.sync.engine import execute
-from book_sync.sync.job import run_books
-from book_sync.web.app import Jobs
+from placekeeper import plugins
+from placekeeper.errors import MissingProgress, ReadFailure
+from placekeeper.plugins.contracts import Book, Observation, Plugin
+from placekeeper.plugins.libby.reader import LibbyReader, open_reader as open_libby
+from placekeeper.plugins.registry import installed
+from placekeeper.sync.engine import execute
+from placekeeper.sync.job import run_books
+from placekeeper.web.app import Jobs
 from tests import test_sync_page
 
 FAKE_PLUGIN = '''
 from contextlib import contextmanager
 import json
-from book_sync.plugins.contracts import Book, Observation, Plugin
-from book_sync.storage import private_json
+from placekeeper.plugins.contracts import Book, Observation, Plugin
+from placekeeper.storage import private_json
 
 FILE = 'fourth-reader.json'
 
@@ -105,8 +105,8 @@ class PluginEngineTests(unittest.TestCase):
         module.mkdir(parents=True)
         (module/'__init__.py').touch()
         (module/'plugin.py').write_text(FAKE_PLUGIN)
-        self.addCleanup(sys.modules.pop, 'book_sync.plugins.fake_fourth.plugin', None)
-        self.addCleanup(sys.modules.pop, 'book_sync.plugins.fake_fourth', None)
+        self.addCleanup(sys.modules.pop, 'placekeeper.plugins.fake_fourth.plugin', None)
+        self.addCleanup(sys.modules.pop, 'placekeeper.plugins.fake_fourth', None)
         with patch.object(plugins, '__path__', [*plugins.__path__, str(directory)]):
             return installed()
 
@@ -115,7 +115,7 @@ class PluginEngineTests(unittest.TestCase):
             body=b'{"service":"fourth","action":"connect","consent":true,"start_position":"200"}')
         page.do_GET()
         token = re.search(rb"const csrf='([^']+)'", page.wfile.getvalue())[1].decode()
-        page.headers['X-Book-Sync'] = token
+        page.headers['X-Placekeeper'] = token
         page.path = '/api/setup'
         page.do_POST()
         self.assertEqual(page.code, 200)
@@ -212,8 +212,8 @@ class PluginEngineTests(unittest.TestCase):
         libby.open_player.return_value = player, 'https://example.invalid/', {}
         book = Book('fixture', 'Fixture', 'map', {'libby': {'id': 'loan'}},
                     self.root/'fixture.epub', Mock())
-        with patch('book_sync.plugins.libby.reader.Libby', return_value=libby), \
-                patch('book_sync.plugins.libby.reader.ChapterMap'):
+        with patch('placekeeper.plugins.libby.reader.Libby', return_value=libby), \
+                patch('placekeeper.plugins.libby.reader.ChapterMap'):
             with open_libby(self.root, book) as reader:
                 self.assertIsInstance(reader, LibbyReader)
         self.assertTrue(player.is_closed)

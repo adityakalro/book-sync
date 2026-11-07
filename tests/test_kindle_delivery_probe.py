@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import httpx
 
-from book_sync.plugins.kindle.delivery import discover_documents, download_kfx
+from placekeeper.plugins.kindle.delivery import discover_documents, download_kfx
 
 
 class DeliveryTests(unittest.TestCase):
@@ -59,8 +59,8 @@ class DeliveryTests(unittest.TestCase):
             root = Path(directory)
             auth = root/'auth.json';auth.write_text('{}')
             client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text=xml)))
-            with patch('book_sync.plugins.kindle.delivery.Authenticator.from_dict', return_value=None), \
-                    patch('book_sync.plugins.kindle.delivery.httpx.Client', return_value=client):
+            with patch('placekeeper.plugins.kindle.delivery.Authenticator.from_dict', return_value=None), \
+                    patch('placekeeper.plugins.kindle.delivery.httpx.Client', return_value=client):
                 report = discover_documents(auth, root/'output')
             saved = (root/'output/personal-documents.json').read_text()
             self.assertEqual(report['personal_documents'], 1)

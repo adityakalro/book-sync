@@ -4,9 +4,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from book_sync.errors import MissingProgress, ReadFailure
-from book_sync.legacy.audiobook import apply_three_way, select_source, read_records
-from book_sync.plugins.kindle.progress import parse_progress_time
+from placekeeper.errors import MissingProgress, ReadFailure
+from placekeeper.legacy.audiobook import apply_three_way, select_source, read_records
+from placekeeper.plugins.kindle.progress import parse_progress_time
 
 
 class TimestampTests(unittest.TestCase):
@@ -26,11 +26,11 @@ class TimestampTests(unittest.TestCase):
                         crosspoint_timestamp=3000, crosspoint_device='X4')
         sources.details.return_value = (snapshot, {}, {})
         libby = Mock()
-        libby.state = {'chipId': 'book-sync'}
+        libby.state = {'chipId': 'placekeeper'}
         libby.position.return_value = {'timestamp': 4000, 'deviceId': 'phone'}
         state = {'receipts': {}, 'pending': {'device': 'Kindle', 'target': 449,
                  'before': {'position': 150, 'stamp': 1000}, 'stamp': 5000}}
-        with patch('book_sync.legacy.audiobook.fetch_progress_time') as fetch, patch('book_sync.legacy.audiobook.elapsed', return_value=120000):
+        with patch('placekeeper.legacy.audiobook.fetch_progress_time') as fetch, patch('placekeeper.legacy.audiobook.elapsed', return_value=120000):
             records, _ = read_records(sources, {}, libby, {}, {}, state)
             self.assertTrue(records['Kindle']['own'])
             self.assertEqual(records['Kindle']['stamp'], 5000)
@@ -73,9 +73,9 @@ class FlowTests(unittest.TestCase):
         self.libby = Mock()
         self.libby.open_player.return_value = (Mock(), 'https://player/', {})
         self.patches = [
-            patch('book_sync.legacy.audiobook.ChapterMap', return_value=self.chapters),
-            patch('book_sync.legacy.audiobook.read_records', side_effect=lambda *args: (copy.deepcopy(self.records), {})),
-            patch('book_sync.legacy.audiobook.write_target', side_effect=self.write),
+            patch('placekeeper.legacy.audiobook.ChapterMap', return_value=self.chapters),
+            patch('placekeeper.legacy.audiobook.read_records', side_effect=lambda *args: (copy.deepcopy(self.records), {})),
+            patch('placekeeper.legacy.audiobook.write_target', side_effect=self.write),
         ]
         self.writers = [p.start() for p in self.patches]
 
@@ -155,7 +155,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(result['writes'], 1)
         self.assertEqual(self.writers[-1].call_args.args[0], 'X4')
 
-    def test_unstarted_audiobook_can_use_ebook_sync(self):
+    def test_unstarted_audiobook_can_use_eplacekeeper(self):
         self.libby.position.side_effect = MissingProgress('No listening position')
         self.assertEqual(self.run_sync()['status'], 'unavailable')
         self.libby.open_player.assert_not_called()

@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
-from book_sync.web.setup import Connections
+from placekeeper.web.setup import Connections
 
 
 class SetupTests(unittest.TestCase):
@@ -32,7 +32,7 @@ class SetupTests(unittest.TestCase):
         response.json.return_value = {'response': {'success': {'tokens': {
             'mac_dms': {'adp_token': 'private-token', 'device_private_key': 'private-key'},
             'bearer': {'expires_in': 3600}}}}}
-        with patch('book_sync.plugins.kindle.registration.httpx.post', return_value=response) as post:
+        with patch('placekeeper.plugins.kindle.registration.httpx.post', return_value=response) as post:
             with self.assertRaises(ValueError):
                 self.connections.apply('kindle', 'finish', {'completion_url':
                     'https://example.org/ap/maplanding?openid.oa2.authorization_code=code'})
@@ -59,7 +59,7 @@ class SetupTests(unittest.TestCase):
         token = Mock(status_code=200)
         token.json.return_value = {'access_token': 'private-reader-key'}
         client.post.side_effect = [code, token]
-        with patch('book_sync.plugins.readest.client.httpx.Client', return_value=client):
+        with patch('placekeeper.plugins.readest.client.httpx.Client', return_value=client):
             result = self.connections.apply('readest', 'start', {'consent': True})
             self.assertNotIn('device_code', result)
             self.assertEqual(self.connections.apply('readest', 'finish', {}), {'connected': True})
@@ -87,7 +87,7 @@ class SetupTests(unittest.TestCase):
         real_client = httpx.Client
         def make_client(*args, **kwargs):
             return real_client(*args, transport=httpx.MockTransport(respond), **kwargs)
-        with patch('book_sync.plugins.libby.client.httpx.Client', side_effect=make_client):
+        with patch('placekeeper.plugins.libby.client.httpx.Client', side_effect=make_client):
             self.assertEqual(self.connections.apply('libby', 'start', {'consent': True}),
                              {'code': '12345678'})
             self.assertFalse(self.connections.status()['libby']['connected'])
