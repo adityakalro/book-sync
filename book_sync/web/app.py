@@ -8,30 +8,29 @@ import os
 from pathlib import Path
 import secrets
 import subprocess
-import sys
 import threading
 from urllib.parse import urlsplit
 
 import httpx
 
-from book_sync.sync.ebook import sync_registry
+from book_sync.sync.job import refresh_libraries, run_books
 from book_sync.web.setup import Connections
 from book_sync.errors import ReadFailure
-from book_sync.plugins.crosspoint.client import SERVER, authenticate
 from book_sync.storage import ROOT, private_json, state_lock
 
 
 class Jobs:
-    def __init__(self,data_root,onboard=None,sync=None):
+    def __init__(self,data_root,onboard=None,sync=None,plugins=None):
         self.root=Path(data_root)
         self.root.mkdir(mode=0o700,parents=True,exist_ok=True)
-        self.connections=Connections(self.root)
+        self.connections=Connections(self.root,plugins)
         self.custom_jobs=onboard is not None or sync is not None
         self.lock=threading.Lock()
         self.running=False
         self.phase='Ready'
         self.onboard=onboard or self.discover
-        self.sync=sync or (lambda notify:sync_registry(self.root,notify))
+        self.sync=sync or self.sync_books
+        self.failed_catalogs=set()
         saved=self.root/'web-last-sync.json'
         self.last=json.loads(saved.read_text()) if saved.exists() else None
 
@@ -40,25 +39,16 @@ class Jobs:
                 'running':self.running,'phase':self.phase,'last':self.last}
 
     def discover(self):
-        result=subprocess.run([sys.executable,'-m','book_sync.sync.onboarding',
-            '--root',str(self.root/'onboarding'),'--amazon-auth',str(self.root/'amazon-kindle-download-device.json'),
-            '--readest-auth',str(self.root/'readest-device.json'),'--kfxlib-parent',str(self.root/'vendor/python')],
-            capture_output=True,timeout=900,cwd=ROOT)
-        if result.returncode:
-            raise ValueError('Could not refresh the book libraries. Check the saved connections.')
-        report=json.loads((self.root/'onboarding/last-run.json').read_text())
-        from collections import Counter
-        return dict(Counter(e['status'] for e in report['events']))
+        counts,self.failed_catalogs=refresh_libraries(self.root,self.connections.connected())
+        return counts
+
+    def sync_books(self,notify):
+        return run_books(self.root,self.connections.connected(),notify,self.failed_catalogs)
 
     def connect(self,username,password,remember):
-        if not self.lock.acquire(blocking=False):
-            raise ValueError('Wait for the current sync or setup action to finish.')
-        try:
-            if (self.root/'crosspoint-auth.json').exists():
-                raise ValueError('Disconnect CrossPoint before connecting another account.')
-            self.connect_crosspoint(username,password,remember)
-        finally:
-            self.lock.release()
+        # Compatibility for clients using the old CrossPoint setup endpoint.
+        return self.setup_action('crosspoint','start',{'username':username,'password':password,
+                                                       'consent':remember})
 
     def setup_action(self,service,action,data):
         if not self.lock.acquire(blocking=False):
@@ -68,20 +58,11 @@ class Jobs:
         finally:
             self.lock.release()
 
-    def connect_crosspoint(self,username,password,remember):
-        if not remember:
-            raise ValueError('Confirm saving the sign-in key to enable one-click sync.')
-        if not username or not password:
-            raise ValueError('Enter the sync username and password used on your X4.')
-        key=authenticate(username,password)
-        private_json(self.root/'crosspoint-auth.json',{'username':username,'auth_key':key,
-            'server':SERVER,'purpose':'User-approved manual reading-progress sync'})
-
     def start(self):
         if not self.lock.acquire(blocking=False):return False
         if not self.custom_jobs and not self.connections.ready():
             self.lock.release()
-            raise ValueError('Connect Kindle, Readest, and at least one destination in Setup.')
+            raise ValueError('Connect two readers and a book catalog in Setup.')
         self.running=True;self.phase='Finding new books…'
         threading.Thread(target=self.run,daemon=True).start()
         return True
@@ -92,7 +73,7 @@ class Jobs:
             with state_lock(self.root/'manual-sync-job'):
                 discovery=self.onboard()
                 books=self.sync(lambda text:setattr(self,'phase',text))
-                failed=any(b['status'] in ('error','unconfirmed','changed') for b in books)
+                failed=bool(discovery.get('discovery_error')) or any(b['status'] in ('error','unconfirmed','changed') for b in books)
                 self.last={'status':'needs_attention' if failed else 'complete',
                     'started_at':started,'finished_at':datetime.now(timezone.utc).isoformat(),
                     'discovery':discovery,'books':books}

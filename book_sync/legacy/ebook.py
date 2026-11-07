@@ -142,7 +142,7 @@ def sync_registry(data_root,notify=lambda message:None):
             sources=ManualSources(data_root/'amazon-device.json',credentials.get('username',''),
                 credentials.get('auth_key',''),profile['document'],profile['crosspoint_document'])
             if loan:
-                from book_sync.sync.audiobook import apply_three_way
+                from book_sync.legacy.audiobook import apply_three_way
                 result=apply_three_way(profile,mapper,sources,
                     data_root/'manual-sync'/profile['document'],libby,loan)
                 if result['status']=='unavailable':

@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
-from book_sync.web.setup import Connections, FILES
+from book_sync.web.setup import Connections
 
 
 class SetupTests(unittest.TestCase):
@@ -42,7 +42,7 @@ class SetupTests(unittest.TestCase):
             request = post.call_args.kwargs['json']['auth_data']
             self.assertEqual(request['authorization_code'], 'code')
             self.assertTrue(request['code_verifier'])
-        for filename in FILES['kindle']:
+        for filename in self.connections.plugins['kindle'].files:
             path = self.root / filename
             self.assertEqual(json.loads(path.read_text())['adp_token'], 'private-token')
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
@@ -98,7 +98,7 @@ class SetupTests(unittest.TestCase):
 
     def test_status_readiness_and_disconnect_are_local(self):
         for service in ('kindle', 'readest', 'libby'):
-            for filename in FILES[service]:
+            for filename in self.connections.plugins[service].files:
                 (self.root/filename).write_text('private')
         self.assertTrue(self.connections.ready())
         self.assertNotIn('private', json.dumps(self.connections.status()))

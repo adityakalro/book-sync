@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 from xml.etree.ElementTree import fromstring
 
 import httpx
-from book_sync.sync.ebook import apply_handoff, ManualSources, sync_registry
+from book_sync.legacy.ebook import apply_handoff, ManualSources, sync_registry
 from book_sync.errors import MissingProgress, ReadFailure
 from book_sync.sync.dry_run import Snapshot
 from tests.test_sync_dry_run import LocationMap,P1,P2
@@ -56,10 +56,10 @@ class HandoffTests(unittest.TestCase):
                      'files':{'epub':{'path':'/test/book.epub'}}}
             libby=Mock();libby.match.return_value={'id':'loan'}
             with patch('book_sync.plugins.libby.client.Libby',return_value=libby), \
-                    patch('book_sync.sync.ebook.load_profile',return_value=(profile,Mock(),'profile')), \
-                    patch('book_sync.sync.ebook.ManualSources'), \
-                    patch('book_sync.sync.audiobook.apply_three_way',return_value={'status':'unavailable','writes':0}), \
-                    patch('book_sync.sync.ebook.apply_handoff',return_value={'status':'in_sync','message':'Together','writes':0}) as ebook:
+                    patch('book_sync.legacy.ebook.load_profile',return_value=(profile,Mock(),'profile')), \
+                    patch('book_sync.legacy.ebook.ManualSources'), \
+                    patch('book_sync.legacy.audiobook.apply_three_way',return_value={'status':'unavailable','writes':0}), \
+                    patch('book_sync.legacy.ebook.apply_handoff',return_value={'status':'in_sync','message':'Together','writes':0}) as ebook:
                 result=sync_registry(root)[0]
             ebook.assert_called_once()
             self.assertEqual(result['status'],'in_sync')
@@ -77,7 +77,7 @@ class HandoffTests(unittest.TestCase):
                 source=ManualSources(auth,'user','test-hash','KINDLEBOOK','cp-book',
                     httpx.Client(transport=httpx.MockTransport(respond)))
             try:
-                with patch('book_sync.sync.ebook.time.sleep'):
+                with patch('book_sync.legacy.ebook.time.sleep'):
                     self.assertEqual(source._get('CrossPoint','https://sync.crosspointreader.com/users/auth'),{'result':'ok'})
             finally:source.close()
         self.assertEqual([r.method for r in calls],['GET','GET'])
@@ -88,7 +88,7 @@ class HandoffTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             sources=Sources(snapshots,respond)
             try:
-                with patch('book_sync.sync.ebook.epub_position_details',return_value={'percentage':0.5}):
+                with patch('book_sync.legacy.ebook.epub_position_details',return_value={'percentage':0.5}):
                     return apply_handoff(profile,Map(),'profile',sources,Path(d))
             finally:sources.client.close()
 

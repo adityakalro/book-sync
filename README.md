@@ -8,7 +8,7 @@ Book Sync helps you pick up where you left off across Send to Kindle documents, 
 - An Amazon account with a **Send to Kindle** personal document and the matching EPUB in **Readest Cloud**. Use the same ebook edition in both places.
 - At least one sync destination. Use the sync account configured on your **CrossPoint X4**, an active **Libby audiobook loan**, or both.
 
-Each installation uses one household’s accounts. Kindle and Readest are required for book matching. Kindle positions are approximate to a location bucket, and Libby positions are approximate within matched chapters. Amazon purchases and other document formats have not been validated.
+Each installation uses one household’s accounts. The included Kindle catalog uses Readest to match editions. Additional plugins can provide their own verified catalogs. Kindle positions are approximate to a location bucket, and Libby positions are approximate within matched chapters. Amazon purchases and other document formats have not been validated.
 
 ## 1. Install Book Sync
 
@@ -69,7 +69,7 @@ For future handoffs, sync the device you were using before clicking **Sync now**
 
 ## Using only some services
 
-Kindle and Readest provide the book maps. Connect CrossPoint, Libby, or both. A book can sync between any two connected reading services with saved positions. A missing X4 position or an unread Kindle copy can be left out of an audio handoff. An audiobook loan without saved listening progress leaves Kindle and X4 on their normal ebook sync path. When fewer than two positions are available, the book is skipped.
+For the built-in catalog, Kindle and Readest provide the book maps. Connect CrossPoint, Libby, or both. A book can sync between any two connected reading services with saved positions. A missing X4 position or an unread Kindle copy can be left out of an audio handoff. An audiobook loan without saved listening progress leaves Kindle and X4 on their normal ebook sync path. When fewer than two positions are available, the book is skipped.
 
 If a connected service returns a connection or authentication error, Book Sync reports it for that book. It can still process the other books in the job.
 
@@ -105,15 +105,17 @@ Automatically generated profiles remain marked `ready_for_dry_run`; this records
 
 Library pagination must complete before the cursor is committed. Cache changes trigger rebuilds. Removed or newly ambiguous matches leave the ready registry. Only one manual job runs at a time, and every handoff rechecks the connected readers before writing.
 
-The standalone read-only poller remains available:
+To preview a handoff using the same planner as **Sync now**:
 
 ```sh
-.venv/bin/python -m book_sync.sync.dry_run --profile /path/to/private/profile.json --login terminal
+.venv/bin/python -m book_sync.sync.preview
 ```
 
 ## Code layout
 
 Service adapters live in `book_sync/plugins/`. The sync jobs in `book_sync/sync/` match books and decide which positions to update. Shared text and chapter maps live in `book_sync/mapping/`, and the web server and templates live in `book_sync/web/`. Tests and synthetic fixtures are under `tests/`, and systemd units and configuration examples are under `deploy/`.
+
+Add a reader or catalog by installing a plugin package. The [plugin guide](docs/plugins.md) describes the contract and shows how to test a fourth reader.
 
 ## Tests and privacy
 

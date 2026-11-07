@@ -8,6 +8,7 @@ import httpx
 from book_sync.mapping.chapters import ChapterMap
 from book_sync.plugins.kindle.progress import fetch_progress_time, write_position
 from book_sync.plugins.libby.client import elapsed
+from book_sync.plugins.libby.reader import AUDIO_TOLERANCE_MS
 from book_sync.errors import MissingProgress, ReadFailure
 from book_sync.plugins.crosspoint.client import DEVICE_ID, write_progress
 from book_sync.storage import private_json
@@ -161,12 +162,12 @@ def apply_three_way(profile, mapper, sources, directory, libby, loan, dry_run=Fa
                         # The destination can be in front matter outside the audio map.
                         pass
                     else:
-                        same = abs(current_audio - source_audio) <= 60
+                        same = abs(current_audio - source_audio) <= AUDIO_TOLERANCE_MS
                 elif not same:
                     same = abs(mapper.from_xpointer(current)['suggested_forward_position']
                                - targets['Kindle']) < 150
             else:
-                same = abs(current - target) <= 60
+                same = abs(current - target) <= AUDIO_TOLERANCE_MS
             if same:
                 outcomes.append(device + ' already near the selected passage')
                 continue

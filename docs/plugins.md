@@ -1,0 +1,20 @@
+# Adding a service
+
+Book Sync loads trusted Python packages from `book_sync/plugins/` at startup. Add a directory such as `book_sync/plugins/kobo/` with an `__init__.py` and a `plugin.py` that exports a `PLUGIN` descriptor. Restart Book Sync to load it. Use a unique, stable plugin ID. The registry, Sync now job, and Setup page pick up the descriptor automatically.
+
+The [plugin contracts](../book_sync/plugins/contracts.py) describe the interfaces. A plugin can provide setup, book discovery, a verified catalog, progress sync, or a combination. For a new reader, implement its service calls and position conversion in that plugin. For a new catalog, provide verified editions. The planner and executor do not need a new branch.
+
+- **Setup.** Declare the credential files that indicate a saved connection and the actions Setup should show. An action has an ID, label, optional fields, and an optional `after` prerequisite. Supported fields are text, password, and URL. The handler receives the private data directory, the pending setup path, the action ID, and submitted values. Return only public instructions, a short code, an HTTPS approval link, or connection status. Keep tokens and pending state private. The built-in Kindle, Readest, CrossPoint, and Libby plugins show the available flows.
+- **Books.** A catalog's `books(root)` yields `Book` records with a stable key and a version for the verified edition map. Use stable service bindings for external book IDs. Match and validate an edition before handing it to the engine. A book may carry a verified EPUB and a reusable text mapper. Declare catalog prerequisites with `catalog_requires` when the provider depends on another configured plugin.
+- **Reader.** Supply a context manager that binds a reader session to a book. Yield `None` when the plugin does not have a verified binding. Return `Observation` values with native progress, an ordered offset in the common edition, and a timestamp in UTC epoch seconds when available. Raise `MissingProgress` for an unstarted book and `ReadFailure` when the service could not be read. A failure blocks writes for that book because the unavailable reader might be the source.
+- **Write rules.** `target` translates the common offset back to a native position or returns `None` to skip an update. Put the reader's own precision and write limits here. `equivalent` decides whether a source position and another reader's position are close enough to skip. Set `prefer_recent` for a reader whose presence calls for timestamp-based source selection. `write` makes one attempt. The executor rereads and verifies the result.
+- **Receipts.** The executor owns the journal. The read hint includes an earlier receipt, a pending write for that reader, and whether a timestamp is needed. Use that evidence to recognize the plugin's own writes when the service omits an update timestamp. Keep transport credentials and raw payloads out of observations and journal entries.
+
+The built-in catalog still discovers Send to Kindle documents and verifies them against Readest EPUBs. A plugin can supply another verified catalog, allowing a job to run with no Kindle or Readest account. A service that uses a new location format must translate its positions to the same edition offsets as its peers. Two connected accounts alone do not establish a book match.
+
+The [fourth reader test](../tests/test_plugin_engine.py) installs a temporary plugin using this contract, connects it through Setup, and runs the normal job without modifying the planner or templates. It also exercises the same planner in preview mode.
+
+```sh
+.venv/bin/python -m book_sync.sync.preview
+.venv/bin/python -m unittest discover -s tests -v
+```

@@ -10,7 +10,7 @@ from zipfile import ZipFile
 import httpx
 
 from book_sync.plugins.kindle.catalog import AmazonCatalog
-from book_sync.sync.onboarding import Onboarder
+from book_sync.plugins.kindle.onboarding import Onboarder
 from book_sync.sync.dry_run import load_profile, private_json
 from book_sync.mapping.text import epub_index
 
@@ -57,8 +57,8 @@ class OnboardingTests(unittest.TestCase):
                          for i,p in enumerate(range(0,len(text),100))])
             return directory/'content.json',directory/'locations.json'
         self.stack=contextlib.ExitStack()
-        self.stack.enter_context(patch('book_sync.sync.onboarding.probe',side_effect=probe))
-        self.stack.enter_context(patch('book_sync.sync.onboarding.download_kfx',side_effect=download))
+        self.stack.enter_context(patch('book_sync.plugins.kindle.onboarding.probe',side_effect=probe))
+        self.stack.enter_context(patch('book_sync.plugins.kindle.onboarding.download_kfx',side_effect=download))
         self.stack.enter_context(patch.object(Onboarder,'extract',extract))
     def tearDown(self):
         self.stack.close();self.temp.cleanup()
