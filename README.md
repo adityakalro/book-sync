@@ -62,10 +62,10 @@ Once Setup says **Ready to sync**, return to the **Sync** page. The credentials 
 
 1. Send the EPUB to Kindle with **Add to your library** enabled. Upload the same edition to **Readest Cloud** so Book Sync can download it.
 2. Open the personal document on Kindle, turn a page, and sync Kindle. If you use an X4, download the EPUB from Readest, keep its `Title.epub` filename, use filename-based document matching, and run **Sync Progress** in the book. If you use Libby, open the matching audiobook loan, listen briefly, and sync your shelf.
-3. In Book Sync, click **Sync now**. The first run discovers the book and builds its map before transferring progress. A long book can take a minute or more on a small Pi. The result appears on the page.
+3. In Book Sync, click **Find new books** to discover the book and build its map. A long book can take a minute or more on a small Pi. When discovery finishes, click **Sync now** to transfer progress. Each job shows its own result.
 4. On the destination, use **Sync Progress** on X4, **Sync to Furthest Page Read** on Kindle, or **Shelf → Actions → Synchronize Shelf** in Libby. Open the book or audiobook to pick up the saved position.
 
-For future handoffs, sync the device you were using before clicking **Sync now**. Books with matching Libby loans use the newest saved progress timestamp. Books with Kindle and X4 progress alone move forward. Kindle keeps its furthest-read marker. Book Sync runs when you click the button.
+For future handoffs, sync the device you were using before clicking **Sync now**. Books with matching Libby loans use the newest saved progress timestamp. Books with Kindle and X4 progress alone move forward. Kindle keeps its furthest-read marker. In **Setup**, you can enable automatic progress sync every 30 minutes. It starts off disabled, and the Sync page shows whether it is on. Both **Sync now** and the schedule use existing maps. Use **Find new books** when you add a title.
 
 ## Using only some services
 
@@ -101,7 +101,7 @@ Private output:
 - `.private/manual-sync/`: private before-write snapshots and verification records.
 - `.private/web-last-sync.json`: last manual job result.
 
-Automatically generated profiles remain marked `ready_for_dry_run`; this records structural validation, not a per-book physical handoff test. The web page's explicit manual action is the separate authorization to apply a handoff. Source profiles do not enable scheduled writes.
+Automatically generated profiles remain marked `ready_for_dry_run`; this records structural validation, not a per-book physical handoff test. The Sync page can apply handoffs on demand, and enabling automatic progress sync in Setup allows scheduled handoffs.
 
 Library pagination must complete before the cursor is committed. Cache changes trigger rebuilds. Removed or newly ambiguous matches leave the ready registry. Only one manual job runs at a time, and every handoff rechecks the connected readers before writing.
 

@@ -2,6 +2,15 @@
 <h1>Connect your services</h1>
 <p class="intro">Connect the services you use. Sync needs a verified book match and saved positions on at least two readers.</p>
 <p class="muted" id="setupStatus" role="status">Checking saved connections…</p>
+<section class="card">
+  <h2>Automatic progress sync</h2>
+  <p class="muted">Sync progress for books that already have maps. Use Find new books on the Sync page to discover and map new titles.</p>
+  <form id="scheduleForm">
+    <label class="check"><input type="checkbox" id="scheduleEnabled" disabled> Sync reading and listening progress every 30 minutes</label>
+    <button class="primary secondary" id="saveSchedule" disabled>Save schedule</button>
+  </form>
+  <p class="muted setup-feedback" id="scheduleMessage" role="status"></p>
+</section>
 <div id="services"></div>
 <footer>Connections apply to this installation. Manage remote device grants in the provider’s account settings.</footer>
 </main>
@@ -93,8 +102,30 @@ function createPanel(key,service){
   document.getElementById('services').append(card);
   return panel;
 }
+const scheduleEnabled=document.getElementById('scheduleEnabled');
+const saveSchedule=document.getElementById('saveSchedule');
+const scheduleMessage=document.getElementById('scheduleMessage');
+let scheduleLoaded=false;
+document.getElementById('scheduleForm').onsubmit=async event=>{
+  event.preventDefault();
+  scheduleEnabled.disabled=saveSchedule.disabled=true;
+  scheduleMessage.classList.remove('error');
+  try{
+    const result=await call('/api/schedule',{enabled:scheduleEnabled.checked});
+    scheduleEnabled.checked=result.enabled;
+    scheduleMessage.textContent=result.enabled?'Automatic sync enabled.':'Automatic sync disabled.';
+  }catch(error){
+    scheduleMessage.textContent=error.message;
+    scheduleMessage.classList.add('error');
+  }finally{scheduleEnabled.disabled=saveSchedule.disabled=false}
+};
 async function refresh(){
   const status=await call('/api/status');
+  if(!scheduleLoaded){
+    scheduleEnabled.checked=status.schedule_enabled;
+    scheduleEnabled.disabled=saveSchedule.disabled=false;
+    scheduleLoaded=true;
+  }
   for(const [key,service] of Object.entries(status.services)){
     if(!panels.has(key))panels.set(key,createPanel(key,service));
     const panel=panels.get(key);

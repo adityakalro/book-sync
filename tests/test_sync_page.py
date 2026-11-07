@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import threading
-import time
+import re
 import unittest
 from unittest.mock import patch,Mock
 import httpx
@@ -44,7 +44,6 @@ class PageTests(unittest.TestCase):
             self.assertEqual(h.code,403);jobs.start.assert_not_called()
 
     def test_setup_post_needs_same_origin_and_page_token(self):
-        import re
         jobs=Mock()
         jobs.setup_action.return_value={'code':'12345678'}
         body=b'{"service":"libby","action":"start","consent":true}'
@@ -66,12 +65,63 @@ class PageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             private_json(Path(d)/'crosspoint-auth.json',{'username':'test','auth_key':'test'})
             jobs=Jobs(d,onboard=onboard,sync=lambda notify:[{'title':'Test','status':'in_sync','message':'Already together','writes':0}])
-            self.assertTrue(jobs.start());self.assertTrue(started.wait(2))
+            self.assertTrue(jobs.start('discovery'));self.assertTrue(started.wait(2))
             self.assertFalse(jobs.start());finish.set()
+            self.assertTrue(jobs.lock.acquire(timeout=3));jobs.lock.release()
+            self.assertIsNone(jobs.last)
+            self.assertEqual(jobs.last_discovery['discovery'], {'cached': 1})
+            self.assertTrue(jobs.start())
             self.assertTrue(jobs.lock.acquire(timeout=3));jobs.lock.release()
             self.assertFalse(jobs.running)
             self.assertEqual(jobs.last['status'],'complete')
             self.assertEqual((Path(d)/'web-last-sync.json').stat().st_mode&0o777,0o600)
+
+    def test_schedule_settings_require_csrf_and_persist(self):
+        with tempfile.TemporaryDirectory() as d:
+            jobs = Jobs(d)
+            self.assertFalse(jobs.status()['schedule_enabled'])
+            h = self.handler(jobs, '/setup', origin='http://127.0.0.1:8780',
+                             body=b'{"enabled":true}')
+            h.do_GET()
+            token = re.search(rb"const csrf='([^']+)'", h.wfile.getvalue())[1].decode()
+            h.path = '/api/schedule'
+            h.do_POST()
+            self.assertEqual(h.code, 403)
+            self.assertFalse(jobs.schedule_enabled)
+            h.headers['X-Book-Sync'] = token
+            h.do_POST()
+            self.assertEqual(h.code, 200)
+            self.assertTrue(Jobs(d).status()['schedule_enabled'])
+            self.assertEqual((Path(d)/'web-schedule.json').stat().st_mode & 0o777, 0o600)
+            jobs.set_schedule(False)
+            self.assertFalse(Jobs(d).status()['schedule_enabled'])
+
+    def test_scheduler_runs_only_progress(self):
+        ran = threading.Event()
+        onboard = Mock()
+        def sync(notify):
+            ran.set()
+            return []
+        with tempfile.TemporaryDirectory() as d:
+            jobs = Jobs(d, onboard=onboard, sync=sync)
+            with patch('book_sync.web.app.monotonic', return_value=100) as clock:
+                jobs.set_schedule(True)
+                self.assertEqual(jobs.next_sync, 1900)
+                clock.return_value = 1900
+                scheduler = threading.Thread(target=jobs.schedule, daemon=True)
+                scheduler.start()
+                try:
+                    self.assertTrue(ran.wait(2))
+                    self.assertTrue(jobs.lock.acquire(timeout=2))
+                    jobs.lock.release()
+                    self.assertEqual(jobs.last['books'], [])
+                    onboard.assert_not_called()
+                    jobs.set_schedule(False)
+                    self.assertIsNone(jobs.next_sync)
+                finally:
+                    jobs.stop_scheduler()
+                    scheduler.join(timeout=2)
+                self.assertFalse(scheduler.is_alive())
 
     def test_saving_connection_needs_explicit_consent_and_does_not_save_password(self):
         with tempfile.TemporaryDirectory() as d:

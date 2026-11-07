@@ -1,15 +1,72 @@
-
-<div class="eyebrow">Reading progress</div><h1>Pick up where<br>you left off.</h1><p class="intro">Find new books and bring your reading and listening progress together. Sync runs only when you ask.</p>
+<div class="eyebrow">Reading progress</div><h1>Pick up where<br>you left off.</h1><p class="intro">Bring your reading and listening progress together across your mapped books.</p>
 <section class="card" id="setupNotice" hidden><h2>Connect your services</h2><p class="muted">Connect the readers and book sources you use.</p><a class="primary secondary" href="/setup">Open setup</a></section>
-<section class="card"><button id="sync" class="primary" disabled>Sync now</button><p id="phase" role="status" aria-live="polite">Checking connection…</p></section>
-<section class="card"><h2 id="resultTitle">Last sync</h2><div id="results"><p class="empty">No sync has run from this page yet.</p></div><p class="meta" id="time"></p></section>
+<section class="card">
+  <button id="sync" class="primary" disabled>Sync now</button>
+  <p class="muted"><span id="schedule">Checking automatic sync…</span> <a href="/setup">Manage in Setup</a></p>
+  <p id="phase" role="status" aria-live="polite">Checking connection…</p>
+</section>
+<section class="card"><h2 id="resultTitle">Last progress sync</h2><div id="results"><p class="empty">No progress sync has run yet.</p></div><p class="meta" id="time"></p></section>
+<section class="card">
+  <h2>Book discovery</h2>
+  <p class="muted">Find and map new books so their progress can sync.</p>
+  <button id="discover" class="primary secondary" disabled>Find new books</button>
+  <p class="meta" id="discoveryResult" role="status">No discovery run yet.</p>
+</section>
 <section class="card steps"><div><strong>Before you sync</strong><p>Sync your current reader so its latest position reaches the cloud.</p></div><div><strong>On your other reader</strong><p>Sync the destination reader and reopen the book to pick up the update.</p></div></section><footer>Home network or WireGuard VPN</footer></main>
 <script nonce="NONCE">
-const csrf='CSRF';let polling=false;const $=id=>document.getElementById(id);
+const csrf='CSRF';
+const $=id=>document.getElementById(id);
 async function call(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-Book-Sync':csrf}:{},body:body?JSON.stringify(body):undefined,cache:'no-store'});const d=await r.json();if(!r.ok)throw Error(d.error||'Connection failed');return d;}
-function render(s){$('setupNotice').hidden=s.connected;$('sync').disabled=!s.connected||s.running;$('sync').textContent=s.running?'Syncing…':'Sync now';$('phase').textContent=s.running?s.phase:s.connected?'Ready when you are.':'Finish setup to start syncing.';
-if(s.last){$('resultTitle').textContent=s.last.status==='complete'?'Sync complete':s.last.status==='needs_attention'?'Some books need attention':'Sync did not finish';$('results').replaceChildren();if(s.last.message){const p=document.createElement('p');p.textContent=s.last.message;p.className='error';$('results').append(p)}for(const b of s.last.books||[]){const row=document.createElement('div');row.className='row';const title=document.createElement('div');title.className='book';title.textContent=b.title;const detail=document.createElement('div');detail.className='result'+(['error','unconfirmed','changed'].includes(b.status)?' error':'');detail.textContent=b.message;row.append(title,detail);$('results').append(row)}const d=s.last.discovery;if(d){const p=document.createElement('p');p.className='meta';p.textContent=(d.ready||0)+' new maps · '+(d.waiting_for_epub||0)+' waiting for a matching ebook'+(d.discovery_error?' · '+d.discovery_error+' catalog refresh failed':'');$('results').append(p)}$('time').textContent=s.last.finished_at?'Finished '+new Date(s.last.finished_at).toLocaleString():'';}}
+function render(s){
+  $('setupNotice').hidden=s.connected;
+  $('sync').disabled=!s.connected||s.running;
+  $('discover').disabled=!s.can_discover||s.running;
+  $('sync').textContent=s.running_job==='progress'?'Syncing…':'Sync now';
+  $('discover').textContent=s.running_job==='discovery'?'Finding new books…':'Find new books';
+  $('phase').textContent=s.running?s.phase:s.connected?'Ready when you are.':'Finish setup to start syncing.';
+  $('schedule').textContent=s.schedule_enabled
+    ?(s.connected?'Automatic progress sync is on and runs every 30 minutes.':'Automatic progress sync is on and will run every 30 minutes once setup is complete.')
+    :'Automatic progress sync is off.';
+  const last=s.last;
+  if(last){
+    $('resultTitle').textContent=last.status==='complete'?'Sync complete':last.status==='needs_attention'?'Some books need attention':'Sync did not finish';
+    $('results').replaceChildren();
+    if(last.message){
+      const p=document.createElement('p');
+      p.textContent=last.message;
+      p.className='error';
+      $('results').append(p);
+    }
+    for(const b of last.books||[]){
+      const row=document.createElement('div');
+      row.className='row';
+      const title=document.createElement('div');
+      title.className='book';
+      title.textContent=b.title;
+      const detail=document.createElement('div');
+      detail.className='result'+(['error','unconfirmed','changed'].includes(b.status)?' error':'');
+      detail.textContent=b.message;
+      row.append(title,detail);
+      $('results').append(row);
+    }
+    if(last.books?.length===0)$('results').textContent='No mapped books to sync. Use Find new books to look for matches.';
+    $('time').textContent=last.finished_at?'Finished '+new Date(last.finished_at).toLocaleString():'';
+  }
+  const discovery=s.last_discovery||(last?.discovery?last:null);
+  if(discovery){
+    const counts=discovery.discovery||{};
+    const summary=discovery.message||((counts.ready||0)+' new maps · '+(counts.waiting_for_epub||0)+' waiting for a matching ebook'+(counts.discovery_error?' · '+counts.discovery_error+' catalog refresh failed':''));
+    $('discoveryResult').textContent=summary+(discovery.finished_at?' · '+new Date(discovery.finished_at).toLocaleString():'');
+  }
+}
 async function refresh(){try{render(await call('/api/status'))}catch(e){$('phase').textContent='Could not reach the Pi. Check your home Wi-Fi or WireGuard connection.'}}
-$('sync').addEventListener('click',async()=>{$('sync').disabled=true;try{await call('/api/sync',{});await refresh()}catch(e){$('phase').textContent=e.message;$('sync').disabled=false}});
+function bindJob(id,path){
+  $(id).addEventListener('click',async()=>{
+    $('sync').disabled=$('discover').disabled=true;
+    try{await call(path,{});await refresh()}catch(e){await refresh();$('phase').textContent=e.message;}
+  });
+}
+bindJob('sync','/api/sync');
+bindJob('discover','/api/discover');
 refresh();setInterval(refresh,2500);
 </script></html>

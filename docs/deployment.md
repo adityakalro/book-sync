@@ -49,7 +49,7 @@ The example configuration listens on localhost. On your computer, keep this SSH 
 ssh -N -L 127.0.0.1:8780:127.0.0.1:8780 YOUR_USER@YOUR_PI_HOST
 ```
 
-Open [Setup](http://127.0.0.1:8780/setup), [connect your accounts](../README.md#3-connect-your-accounts), and [sync a first book](../README.md#4-sync-your-first-book). The web page starts at boot. Sync runs when you click **Sync now**. If you previously enabled the optional onboarding timer service, disable `book-sync-onboarding.service` to use the page on demand.
+Open [Setup](http://127.0.0.1:8780/setup), [connect your accounts](../README.md#3-connect-your-accounts), and [sync a first book](../README.md#4-sync-your-first-book). The web page starts at boot. Use **Find new books** for discovery and mapping and **Sync now** for progress. To sync progress every 30 minutes, enable automatic progress sync in **Setup**. The web service saves the setting across restarts and starts a fresh interval on startup. A scheduled run skips its turn if another job is active or the necessary services are disconnected. If you previously enabled the optional five-minute onboarding service, disable it with `sudo systemctl disable --now book-sync-onboarding.service` to run discovery from the page.
 
 ## 3. Optional LAN or WireGuard access
 

@@ -1,4 +1,4 @@
-"""Discover book maps and run one job over the configured plugin registry."""
+"""Independent catalog discovery and progress jobs for the plugin registry."""
 from collections import Counter
 
 from book_sync.errors import ReadFailure
@@ -6,23 +6,22 @@ from book_sync.sync.engine import sync_book
 
 
 def refresh_libraries(root, plugins):
-    counts, failed = Counter(), set()
+    counts = Counter()
     for key, plugin in plugins.items():
         if plugin.discover is None or not all(k in plugins for k in plugin.catalog_requires):
             continue
         try:
             counts.update(plugin.discover(root, set(plugins)))
         except Exception:
-            failed.add(key)
             counts['discovery_error'] += 1
-    return dict(counts), failed
+    return dict(counts)
 
 
-def run_books(root, plugins, notify, excluded=(), *, dry_run=False):
+def run_books(root, plugins, notify, *, dry_run=False):
     results = []
     seen = set()
     for key, plugin in plugins.items():
-        if not plugin.catalog_ready(plugins) or key in excluded:
+        if not plugin.catalog_ready(plugins):
             continue
         try:
             for book in plugin.books(root):
