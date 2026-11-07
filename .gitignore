@@ -15,7 +15,7 @@ __pycache__/
 *.log
 *.jsonl
 *.epub
-!/Book Sync Progress Test.epub
+!/tests/fixtures/Book Sync Progress Test.epub
 *.azw
 *.azw3
 *.azw8

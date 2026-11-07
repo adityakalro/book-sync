@@ -1,0 +1,141 @@
+<div class="eyebrow">Connections</div>
+<h1>Connect your services</h1>
+<p class="intro">Link Kindle and Readest to match your books. Connect CrossPoint, Libby, or both to sync your place. This installation shares one set of accounts.</p>
+<p class="muted" id="setupStatus" role="status">Checking saved connections…</p>
+<section class="card" data-service="kindle">
+  <div class="service-title"><h2>Kindle</h2><span class="service-state"></span></div>
+  <p class="muted">Sign in on Amazon to link your Send to Kindle library and reading position.</p>
+  <div class="setup-controls" hidden>
+    <label class="check"><input type="checkbox" class="consent">Allow Book Sync to register a Kindle device and save its access on this installation.</label>
+    <button class="primary secondary start">Start Amazon sign-in</button>
+    <div class="pairing" hidden>
+      <p><a class="provider-link" target="_blank" rel="noopener noreferrer">Open Amazon sign-in</a></p>
+      <form class="finish-form">
+        <label for="kindle-completion">After signing in, paste the full address of the Amazon completion page.</label>
+        <input id="kindle-completion" type="url" autocomplete="off" spellcheck="false" required>
+        <div class="actions"><button class="primary secondary">Complete connection</button></div>
+      </form>
+    </div>
+  </div>
+  <div class="actions"><button class="primary secondary disconnect" hidden>Disconnect Kindle</button></div>
+  <p class="muted setup-feedback" role="status"></p>
+</section>
+<section class="card" data-service="readest">
+  <div class="service-title"><h2>Readest</h2><span class="service-state"></span></div>
+  <p class="muted">Link your Readest Cloud library so Book Sync can find and download matching EPUBs.</p>
+  <div class="setup-controls" hidden>
+    <label class="check"><input type="checkbox" class="consent">Allow Book Sync to save a Readest reader key on this installation.</label>
+    <button class="primary secondary start">Get Readest code</button>
+    <div class="pairing" hidden>
+      <p class="code"></p><p><a class="provider-link" target="_blank" rel="noopener noreferrer">Approve in Readest</a></p>
+      <button class="primary secondary finish">Check approval</button>
+    </div>
+  </div>
+  <div class="actions"><button class="primary secondary disconnect" hidden>Disconnect Readest</button></div>
+  <p class="muted setup-feedback" role="status"></p>
+</section>
+<section class="card" data-service="crosspoint">
+  <div class="service-title"><h2>CrossPoint</h2><span class="service-state"></span></div>
+  <p class="muted">Use the CrossPoint sync account configured on your X4.</p>
+  <div class="setup-controls" hidden>
+    <form id="crosspoint-login">
+      <label for="username">Sync username</label><input id="username" autocomplete="username" required>
+      <label for="password">Sync password</label><input id="password" type="password" autocomplete="current-password" required>
+      <label class="check"><input type="checkbox" id="remember" required>Save my CrossPoint sign-in key on this installation. The password is used to create the key and is discarded.</label>
+      <button class="primary secondary">Connect CrossPoint</button>
+    </form>
+  </div>
+  <div class="actions"><button class="primary secondary disconnect" hidden>Disconnect CrossPoint</button></div>
+  <p class="muted setup-feedback" role="status"></p>
+</section>
+<section class="card" data-service="libby">
+  <div class="service-title"><h2>Libby</h2><span class="service-state"></span></div>
+  <p class="muted">Link as another Libby device to sync listening progress for matching audiobook loans.</p>
+  <div class="setup-controls" hidden>
+    <label class="check"><input type="checkbox" class="consent">Allow Book Sync to save a Libby session with access to your cards and loans.</label>
+    <button class="primary secondary start">Get Libby code</button>
+    <div class="pairing" hidden>
+      <p class="code"></p><p class="muted">In Libby, open <strong>Menu → Copy To Another Device</strong> and enter the code.</p>
+      <button class="primary secondary finish">Check connection</button>
+    </div>
+  </div>
+  <div class="actions"><button class="primary secondary disconnect" hidden>Disconnect Libby</button></div>
+  <p class="muted setup-feedback" role="status"></p>
+</section>
+<footer>Connections apply to this installation. Disconnecting removes the saved access here. Manage registered devices in the provider’s account settings.</footer>
+</main>
+<script nonce="NONCE">
+const csrf='CSRF';
+const cards=[...document.querySelectorAll('[data-service]')];
+const get=(card,selector)=>card.querySelector(selector);
+async function call(path,body){
+  const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-Book-Sync':csrf}:{},body:body?JSON.stringify(body):undefined,cache:'no-store'});
+  const result=await response.json();
+  if(!response.ok)throw Error(result.error||'Connection failed');
+  return result;
+}
+async function refresh(){
+  const state=await call('/api/status');
+  for(const card of cards){
+    const service=state.services[card.dataset.service];
+    const connected=service.connected;
+    get(card,'.service-state').textContent=connected?'Connected':'Not connected';
+    get(card,'.setup-controls').hidden=connected;
+    const disconnect=get(card,'.disconnect');
+    disconnect.hidden=!service.can_disconnect;
+    disconnect.textContent=connected?'Disconnect':'Reset setup';
+  }
+  document.getElementById('setupStatus').textContent=state.running?'A sync is running. Connection changes wait until it finishes.':state.connected?'Ready to sync.':'Connect Kindle, Readest, and CrossPoint or Libby.';
+}
+async function act(card,button,task){
+  const message=get(card,'.setup-feedback');
+  button.disabled=true;message.textContent='Working…';message.classList.remove('error');
+  try{message.textContent=await task()||'';await refresh()}
+  catch(error){message.textContent=error.message;message.classList.add('error')}
+  finally{button.disabled=false}
+}
+for(const card of cards){
+  const service=card.dataset.service;
+  const setup=(action,data={})=>call('/api/setup',{service,action,...data});
+  const start=get(card,'.start');
+  if(start)start.onclick=()=>act(card,start,async()=>{
+    const result=await setup('start',{consent:get(card,'.consent').checked});
+    const link=get(card,'.provider-link');
+    const url=result.login_url||result.verification_uri_complete;
+    if(link&&url)link.href=url;
+    const code=get(card,'.code');
+    if(code)code.textContent=result.code||result.user_code;
+    get(card,'.pairing').hidden=false;
+  });
+  const finish=get(card,'.finish');
+  if(finish)finish.onclick=()=>act(card,finish,async()=>{
+    await setup('finish');get(card,'.pairing').hidden=true;return 'Connected.';
+  });
+  const finishForm=get(card,'.finish-form');
+  if(finishForm)finishForm.onsubmit=event=>{
+    event.preventDefault();
+    act(card,get(finishForm,'button'),async()=>{
+      await setup('finish',{completion_url:get(finishForm,'input').value});
+      finishForm.reset();get(card,'.pairing').hidden=true;return 'Connected.';
+    });
+  };
+  const disconnect=get(card,'.disconnect');
+  disconnect.onclick=()=>{
+    if(!window.confirm('Disconnect this service from Book Sync?'))return;
+    act(card,disconnect,async()=>{
+      await setup('disconnect',{confirm:true});
+      const pairing=get(card,'.pairing');if(pairing)pairing.hidden=true;
+      return 'Disconnected.';
+    });
+  };
+}
+const crosspoint=document.getElementById('crosspoint-login');
+crosspoint.onsubmit=event=>{
+  event.preventDefault();
+  act(crosspoint.closest('[data-service]'),get(crosspoint,'button'),async()=>{
+    await call('/api/connect',{username:document.getElementById('username').value,password:document.getElementById('password').value,remember:document.getElementById('remember').checked});
+    crosspoint.reset();return 'Connected.';
+  });
+};
+refresh().catch(error=>{document.getElementById('setupStatus').textContent=error.message});
+</script></html>

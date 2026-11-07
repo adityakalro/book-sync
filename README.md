@@ -35,8 +35,8 @@ ln -s kindle.koplugin/python .private/vendor/python
 ## 2. Start the private web page
 
 ```sh
-cp web-config.example.json .private/web-config.json
-.venv/bin/python sync_page.py
+cp deploy/web-config.example.json .private/web-config.json
+.venv/bin/python -m book_sync.web.app
 ```
 
 Open [Setup](http://127.0.0.1:8780/setup) in a browser on the host. If the host is a headless Pi, leave Book Sync running and open a second terminal **on your computer**. Forward the port over SSH, substituting your own SSH username and Pi address:
@@ -45,7 +45,7 @@ Open [Setup](http://127.0.0.1:8780/setup) in a browser on the host. If the host 
 ssh -N -L 127.0.0.1:8780:127.0.0.1:8780 YOUR_USER@YOUR_PI_HOST
 ```
 
-Keep the tunnel open while using the same [local Setup address](http://127.0.0.1:8780/setup). For startup at boot or access over a trusted LAN or WireGuard, see the [Linux service guide](DEPLOYMENT.example.md).
+Keep the tunnel open while using the same [local Setup address](http://127.0.0.1:8780/setup). For startup at boot or access over a trusted LAN or WireGuard, see the [Linux service guide](docs/deployment.md).
 
 ## 3. Connect your accounts
 
@@ -84,10 +84,10 @@ If a connected service returns a connection or authentication error, Book Sync r
 ## Onboarding and maps
 
 ```sh
-.venv/bin/python onboarding.py
+.venv/bin/python -m book_sync.sync.onboarding
 ```
 
-The page runs this step on demand. A separate `onboarding.py --watch` mode is available, but do not enable the old timed service alongside the manual page if you want fully on-demand behavior.
+The page runs this step on demand. A separate `python -m book_sync.sync.onboarding --watch` mode is available, but do not enable the old timed service alongside the manual page if you want fully on-demand behavior.
 
 Titles narrow candidate EPUBs; metadata alone never establishes a match. Acceptance requires identical normalized reading text, 120 distributed unique context matches in each direction, and at least 95% of 40 coordinate round trips. Quarantined books are retried when the catalog changes. Title metadata with no plausible candidate waits instead of bulk-downloading unrelated documents.
 
@@ -108,17 +108,21 @@ Library pagination must complete before the cursor is committed. Cache changes t
 The standalone read-only poller remains available:
 
 ```sh
-.venv/bin/python sync_dry_run.py --profile /path/to/private/profile.json --login terminal
+.venv/bin/python -m book_sync.sync.dry_run --profile /path/to/private/profile.json --login terminal
 ```
+
+## Code layout
+
+Service adapters live in `book_sync/plugins/`. The sync jobs in `book_sync/sync/` match books and decide which positions to update. Shared text and chapter maps live in `book_sync/mapping/`, and the web server and templates live in `book_sync/web/`. Tests and synthetic fixtures are under `tests/`, and systemd units and configuration examples are under `deploy/`.
 
 ## Tests and privacy
 
 ```sh
-.venv/bin/python -m unittest discover -v
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
-The included **Book Sync Progress Test.epub** contains synthetic test prose. Real books, reading history, credentials, personal host details, and account-specific experiments are excluded. Optional real-book checks require a local profile supplied through `BOOK_SYNC_TEST_PROFILE`.
+The [synthetic test EPUB](tests/fixtures/Book%20Sync%20Progress%20Test.epub) contains synthetic test prose. Real books, reading history, credentials, personal host details, and account-specific experiments are excluded. Optional real-book checks require a local profile supplied through `BOOK_SYNC_TEST_PROFILE`.
 
-See [SHARING.md](SHARING.md) for the publication boundary. The implementation is a personal prototype, using unofficial service endpoints.
+See [sharing guide](docs/sharing.md) for the publication boundary. The implementation is a personal prototype, using unofficial service endpoints.
 
 Protocol references: [Kindle registration research](https://github.com/mkb79/kindle), [personal-document KFX delivery](https://github.com/kafkasl/ksync), [Readest reader APIs](https://github.com/readest/readest/tree/main/apps/readest-app/src/app/api/crosspoint), and [CrossPoint Sync API](https://github.com/crosspoint-reader/crosspoint-sync/blob/main/docs/API.md).

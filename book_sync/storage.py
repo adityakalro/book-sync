@@ -1,0 +1,50 @@
+"""Project paths and private state storage."""
+from contextlib import contextmanager
+import hashlib
+import json
+import os
+from pathlib import Path
+import tempfile
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def private_json(path, data):
+    path = Path(path)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=path.name+'.', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump(data, f, indent=2)
+            f.write('\n')
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def append_event(path, data):
+    path = Path(path)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), 'a') as f:
+        f.write(json.dumps(data, separators=(',', ':'))+'\n')
+
+
+def digest(data):
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+
+@contextmanager
+def state_lock(path):
+    # Supported on Linux (Pi) and macOS. Lock a separate inode so atomic state
+    # replacement never permits a second poller to race this process.
+    import fcntl
+    fd = os.open(str(path)+'.lock', os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError('Another loop is using this state file') from None
+        yield
+    finally:
+        os.close(fd)
